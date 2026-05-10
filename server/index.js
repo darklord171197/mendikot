@@ -6,6 +6,7 @@ const { Server } = require("socket.io");
 const app = express();
 app.use(cors());
 
+
 const server = http.createServer(app);
 const io = require("socket.io")(server, {
   cors: {
@@ -13,7 +14,9 @@ const io = require("socket.io")(server, {
     methods: ["GET", "POST"],
   },
 });
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
+
+
 
 const SUITS = ["s", "h", "d", "c"];
 const SYM = { s: "♠", h: "♥", d: "♦", c: "♣" };
