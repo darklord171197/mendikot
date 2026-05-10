@@ -833,6 +833,36 @@ io.on("connection", (socket) => {
 
     socketRoomMap.delete(socket.id);
   });
+  socket.on("reconnectPlayer", ({ roomCode, name }) => {
+  const room = rooms[roomCode];
+
+  if (!room) {
+    socket.emit("errorMessage", "Room not found");
+    return;
+  }
+
+  const player = room.players.find(
+    (p) =>
+      p.name.trim().toLowerCase() ===
+      name.trim().toLowerCase()
+  );
+
+  if (!player) {
+    socket.emit("errorMessage", "Player not found");
+    return;
+  }
+
+  player.socketId = socket.id;
+  player.connected = true;
+
+  socketRoomMap.set(socket.id, roomCode);
+
+  socket.join(roomCode);
+
+  room.message = `${player.name} reconnected`;
+
+  sendRoomState(roomCode);
+});
 });
 
 server.listen(PORT, () => {
