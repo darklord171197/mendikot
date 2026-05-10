@@ -4,13 +4,24 @@ const cors = require("cors");
 const { Server } = require("socket.io");
 
 const app = express();
-app.use(cors());
-
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "https://mendikot.vercel.app",
+    ],
+  })
+);
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
-});
+cors: {
+  origin: [
+    "http://localhost:5173",
+    "https://mendikot.vercel.app",
+  ],
+  methods: ["GET", "POST"],
+},});
 
 const PORT = process.env.PORT || 5000;
 
