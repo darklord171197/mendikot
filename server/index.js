@@ -9,10 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
+  cors: { origin: "*", methods: ["GET", "POST"] },
 });
 
 const PORT = process.env.PORT || 5000;
@@ -22,18 +19,8 @@ const SYM = { s: "♠", h: "♥", d: "♦", c: "♣" };
 const VALS = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 
 const RANK = {
-  3: 3,
-  4: 4,
-  5: 5,
-  6: 6,
-  7: 7,
-  8: 8,
-  9: 9,
-  10: 10,
-  J: 11,
-  Q: 12,
-  K: 13,
-  A: 14,
+  3: 3, 4: 4, 5: 5, 6: 6, 7: 7, 8: 8, 9: 9, 10: 10,
+  J: 11, Q: 12, K: 13, A: 14,
 };
 
 const rooms = {};
@@ -66,17 +53,11 @@ function teamOf(index) {
 
 function makeDeck() {
   const deck = [];
-
   for (const s of SUITS) {
     for (const v of VALS) {
-      deck.push({
-        s,
-        v,
-        id: `${s}${v}`,
-      });
+      deck.push({ s, v, id: `${s}${v}` });
     }
   }
-
   return deck;
 }
 
@@ -85,18 +66,13 @@ function shuffle(deck) {
     const j = Math.floor(Math.random() * (i + 1));
     [deck[i], deck[j]] = [deck[j], deck[i]];
   }
-
   return deck;
 }
 
 function sortHand(hand) {
   const suitOrder = { s: 1, h: 2, d: 3, c: 4 };
-
   return [...hand].sort((a, b) => {
-    if (suitOrder[a.s] !== suitOrder[b.s]) {
-      return suitOrder[a.s] - suitOrder[b.s];
-    }
-
+    if (suitOrder[a.s] !== suitOrder[b.s]) return suitOrder[a.s] - suitOrder[b.s];
     return RANK[a.v] - RANK[b.v];
   });
 }
@@ -111,7 +87,6 @@ function isTen(card) {
 
 function getPlayable(room, playerIndex) {
   const hand = room.hands[playerIndex] || [];
-
   if (room.trick.length === 0) return hand;
 
   const ledSuit = room.trick[0].card.s;
@@ -122,10 +97,8 @@ function getPlayable(room, playerIndex) {
 
 function canFollowLedSuit(room, playerIndex) {
   if (room.trick.length === 0) return true;
-
   const ledSuit = room.trick[0].card.s;
   const hand = room.hands[playerIndex] || [];
-
   return hand.some((c) => c.s === ledSuit);
 }
 
@@ -140,13 +113,8 @@ function beats(room, a, b) {
     if (!aTrump && bTrump) return false;
   }
 
-  if (a.s === b.s) {
-    return rank(a) > rank(b);
-  }
-
-  if (a.s === ledSuit && b.s !== ledSuit) {
-    return true;
-  }
+  if (a.s === b.s) return rank(a) > rank(b);
+  if (a.s === ledSuit && b.s !== ledSuit) return true;
 
   return false;
 }
@@ -249,7 +217,6 @@ function publicState(room, socketId) {
 function sendRoomState(roomCode) {
   const code = cleanRoomCode(roomCode);
   const room = rooms[code];
-
   if (!room) return;
 
   for (const p of room.players) {
@@ -286,8 +253,6 @@ function startGame(room) {
     return sortHand(cards);
   });
 
-  // IMPORTANT FIX:
-  // First turn starts with Player 1 so you can test easily.
   room.leader = 0;
   room.currentPlayer = 0;
 
@@ -369,9 +334,7 @@ function chooseBotTrump(room, playerIndex) {
   const hand = room.hands[playerIndex] || [];
   const counts = { s: 0, h: 0, d: 0, c: 0 };
 
-  for (const c of hand) {
-    counts[c.s]++;
-  }
+  for (const c of hand) counts[c.s]++;
 
   return Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0];
 }
@@ -390,10 +353,7 @@ function chooseBotMove(room, playerIndex) {
   }
 
   if (playable.length === 1) {
-    return {
-      card: playable[0],
-      selectedTrump,
-    };
+    return { card: playable[0], selectedTrump };
   }
 
   if (room.trick.length === 0) {
@@ -402,16 +362,10 @@ function chooseBotMove(room, playerIndex) {
       : playable;
 
     if (nonTrump.length > 0) {
-      return {
-        card: highest(nonTrump),
-        selectedTrump,
-      };
+      return { card: highest(nonTrump), selectedTrump };
     }
 
-    return {
-      card: lowest(playable),
-      selectedTrump,
-    };
+    return { card: lowest(playable), selectedTrump };
   }
 
   const winningPlayer = currentWinnerIndex(room);
@@ -419,19 +373,13 @@ function chooseBotMove(room, playerIndex) {
     winningPlayer !== null && teamOf(winningPlayer) === myTeam;
 
   if (partnerWinning) {
-    return {
-      card: lowest(playable),
-      selectedTrump,
-    };
+    return { card: lowest(playable), selectedTrump };
   }
 
   const winningCards = playable.filter((c) => wouldWin(room, playerIndex, c));
 
   if (winningCards.length > 0) {
-    return {
-      card: lowest(winningCards),
-      selectedTrump,
-    };
+    return { card: lowest(winningCards), selectedTrump };
   }
 
   const nonTrump = room.trump
@@ -446,50 +394,32 @@ function chooseBotMove(room, playerIndex) {
 
 function playCardCore(room, playerIndex, cardId, selectedTrump) {
   if (!room || room.status !== "playing") {
-    return {
-      ok: false,
-      error: "Game is not active.",
-    };
+    return { ok: false, error: "Game is not active." };
   }
 
   if (!cardId) {
-    return {
-      ok: false,
-      error: "Invalid card selected.",
-    };
+    return { ok: false, error: "Invalid card selected." };
   }
 
   if (room.trick.some((t) => t.playerIndex === playerIndex)) {
-    return {
-      ok: false,
-      error: "You have already played in this trick.",
-    };
+    return { ok: false, error: "You have already played in this trick." };
   }
 
   if (room.currentPlayer !== playerIndex) {
-    return {
-      ok: false,
-      error: "It is not your turn.",
-    };
+    return { ok: false, error: "It is not your turn." };
   }
 
   const hand = room.hands[playerIndex] || [];
   const card = hand.find((c) => c.id === cardId);
 
   if (!card) {
-    return {
-      ok: false,
-      error: "Card not found.",
-    };
+    return { ok: false, error: "Card not found." };
   }
 
   const playable = getPlayable(room, playerIndex);
 
   if (!playable.some((c) => c.id === cardId)) {
-    return {
-      ok: false,
-      error: "You must follow suit.",
-    };
+    return { ok: false, error: "You must follow suit." };
   }
 
   const cannotFollow =
@@ -497,18 +427,11 @@ function playCardCore(room, playerIndex, cardId, selectedTrump) {
 
   if (!room.trump && cannotFollow) {
     if (!selectedTrump) {
-      return {
-        ok: false,
-        needTrump: true,
-        cardId,
-      };
+      return { ok: false, needTrump: true, cardId };
     }
 
     if (!SUITS.includes(selectedTrump)) {
-      return {
-        ok: false,
-        error: "Invalid trump.",
-      };
+      return { ok: false, error: "Invalid trump." };
     }
 
     room.trump = selectedTrump;
@@ -524,18 +447,13 @@ function playCardCore(room, playerIndex, cardId, selectedTrump) {
   });
 
   if (room.trick.length === room.playerCount) {
-    return {
-      ok: true,
-      trickComplete: true,
-    };
+    return { ok: true, trickComplete: true };
   }
 
   room.currentPlayer = (room.currentPlayer + 1) % room.playerCount;
   room.message = `${room.players[room.currentPlayer].name}'s turn.`;
 
-  return {
-    ok: true,
-  };
+  return { ok: true };
 }
 
 function runBots(roomCode) {
@@ -580,6 +498,36 @@ function runBots(roomCode) {
       runBots(code);
     }
   }, 800);
+}
+
+function reconnectPlayer(socket, roomCode, name) {
+  const code = cleanRoomCode(roomCode);
+  const safeName = cleanName(name);
+  const room = rooms[code];
+
+  if (!room) {
+    socket.emit("errorMessage", "Room not found.");
+    return false;
+  }
+
+  const player = room.players.find(
+    (p) => p.name.trim().toLowerCase() === safeName.trim().toLowerCase()
+  );
+
+  if (!player) {
+    return false;
+  }
+
+  player.socketId = socket.id;
+  player.connected = true;
+
+  socketRoomMap.set(socket.id, code);
+  socket.join(code);
+
+  room.message = `${player.name} reconnected.`;
+  sendRoomState(code);
+
+  return true;
 }
 
 io.on("connection", (socket) => {
@@ -641,6 +589,14 @@ io.on("connection", (socket) => {
     runBots(room.code);
   });
 
+  socket.on("reconnectPlayer", ({ roomCode, name } = {}) => {
+    const ok = reconnectPlayer(socket, roomCode, name);
+
+    if (!ok) {
+      socket.emit("reconnectFailed", "Player not found in this room.");
+    }
+  });
+
   socket.on("joinRoom", ({ roomCode, name } = {}) => {
     const code = cleanRoomCode(roomCode);
     const safeName = cleanName(name);
@@ -654,7 +610,6 @@ io.on("connection", (socket) => {
 
     if (existingCode && rooms[existingCode]) {
       if (existingCode === code) {
-        socket.emit("errorMessage", "You have already joined this room.");
         sendRoomState(code);
         return;
       }
@@ -675,25 +630,17 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (room.status !== "waiting") {
-      socket.emit("errorMessage", "Game already started.");
-      return;
-    }
-
-    const duplicateSocket = room.players.find((p) => p.socketId === socket.id);
-
-    if (duplicateSocket) {
-      socket.emit("errorMessage", "You have already joined this room.");
-      sendRoomState(code);
-      return;
-    }
-
-    const duplicateName = room.players.find(
+    const existingPlayerByName = room.players.find(
       (p) => p.name.trim().toLowerCase() === safeName.trim().toLowerCase()
     );
 
-    if (duplicateName) {
-      socket.emit("errorMessage", "This player name is already used in the room.");
+    if (existingPlayerByName) {
+      reconnectPlayer(socket, code, safeName);
+      return;
+    }
+
+    if (room.status !== "waiting") {
+      socket.emit("errorMessage", "Game already started.");
       return;
     }
 
@@ -748,11 +695,6 @@ io.on("connection", (socket) => {
       return;
     }
 
-    if (!cardId) {
-      socket.emit("errorMessage", "Invalid card selected.");
-      return;
-    }
-
     const player = room.players.find((p) => p.socketId === socket.id);
 
     if (!player) {
@@ -760,20 +702,10 @@ io.on("connection", (socket) => {
       return;
     }
 
-    console.log("PLAY CARD:", {
-      roomCode: code,
-      cardId,
-      playerIndex: player.index,
-      currentPlayer: room.currentPlayer,
-      playerName: player.name,
-    });
-
     const result = playCardCore(room, player.index, cardId, selectedTrump);
 
     if (result.needTrump) {
-      socket.emit("needTrump", {
-        cardId: result.cardId,
-      });
+      socket.emit("needTrump", { cardId: result.cardId });
       return;
     }
 
@@ -833,36 +765,6 @@ io.on("connection", (socket) => {
 
     socketRoomMap.delete(socket.id);
   });
-  socket.on("reconnectPlayer", ({ roomCode, name }) => {
-  const room = rooms[roomCode];
-
-  if (!room) {
-    socket.emit("errorMessage", "Room not found");
-    return;
-  }
-
-  const player = room.players.find(
-    (p) =>
-      p.name.trim().toLowerCase() ===
-      name.trim().toLowerCase()
-  );
-
-  if (!player) {
-    socket.emit("errorMessage", "Player not found");
-    return;
-  }
-
-  player.socketId = socket.id;
-  player.connected = true;
-
-  socketRoomMap.set(socket.id, roomCode);
-
-  socket.join(roomCode);
-
-  room.message = `${player.name} reconnected`;
-
-  sendRoomState(roomCode);
-});
 });
 
 server.listen(PORT, () => {
