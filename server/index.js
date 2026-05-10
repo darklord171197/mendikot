@@ -19,7 +19,6 @@ const PORT = process.env.PORT || 5000;
 
 const SUITS = ["s", "h", "d", "c"];
 const SYM = { s: "♠", h: "♥", d: "♦", c: "♣" };
-
 const VALS = ["3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"];
 
 const RANK = {
@@ -54,7 +53,6 @@ function createRoomCode() {
   do {
     code = Math.random().toString(36).substring(2, 7).toUpperCase();
   } while (rooms[code]);
-
   return code;
 }
 
@@ -227,6 +225,11 @@ function publicState(room, socketId) {
 
     myIndex,
     myHand: sortHand(room.hands[myIndex] || []),
+    playableCardIds:
+      room.status === "playing" && room.currentPlayer === myIndex
+        ? getPlayable(room, myIndex).map((c) => c.id)
+        : [],
+
     handCounts: room.hands.map((h) => h.length),
 
     trick: room.trick,
@@ -283,8 +286,10 @@ function startGame(room) {
     return sortHand(cards);
   });
 
-  room.leader = (room.dealer + 1) % room.playerCount;
-  room.currentPlayer = room.leader;
+  // IMPORTANT FIX:
+  // First turn starts with Player 1 so you can test easily.
+  room.leader = 0;
+  room.currentPlayer = 0;
 
   room.message = `${room.players[room.currentPlayer].name} starts. Trump is hidden.`;
 }
@@ -444,6 +449,13 @@ function playCardCore(room, playerIndex, cardId, selectedTrump) {
     return {
       ok: false,
       error: "Game is not active.",
+    };
+  }
+
+  if (!cardId) {
+    return {
+      ok: false,
+      error: "Invalid card selected.",
     };
   }
 
@@ -736,12 +748,25 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (!cardId) {
+      socket.emit("errorMessage", "Invalid card selected.");
+      return;
+    }
+
     const player = room.players.find((p) => p.socketId === socket.id);
 
     if (!player) {
       socket.emit("errorMessage", "You are not part of this room.");
       return;
     }
+
+    console.log("PLAY CARD:", {
+      roomCode: code,
+      cardId,
+      playerIndex: player.index,
+      currentPlayer: room.currentPlayer,
+      playerName: player.name,
+    });
 
     const result = playCardCore(room, player.index, cardId, selectedTrump);
 
