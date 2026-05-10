@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
 
-const socket = io("http://localhost:5000");
+const socket = io("https://mendikot.onrender.com");
 
 const SYM = { s: "♠", h: "♥", d: "♦", c: "♣" };
 const SNAME = { s: "Spades", h: "Hearts", d: "Diamonds", c: "Clubs" };
