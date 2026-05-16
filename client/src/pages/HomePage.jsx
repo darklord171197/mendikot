@@ -55,7 +55,7 @@ export default function HomePage() {
       if (settled) return;
       cleanup();
       setBusy(false);
-      navigate(`/room/${state.roomCode}`);
+      navigate(`/room/${state.roomCode}/lobby`);
     };
     const onError = (msg) => {
       if (settled) return;
@@ -88,7 +88,7 @@ export default function HomePage() {
       return;
     }
 
-    navigate(`/room/${code}`);
+    navigate(`/room/${code}/lobby`);
   };
 
   return (

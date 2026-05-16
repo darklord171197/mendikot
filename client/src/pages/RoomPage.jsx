@@ -57,8 +57,6 @@ export default function RoomPage() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [pendingTrumpCard, setPendingTrumpCard] = useState(null);
-  const [lobbyAssignments, setLobbyAssignments] = useState({});
-  const [draggingPlayer, setDraggingPlayer] = useState(null);
 
   const stateRef = useRef(null);
   const code = (roomCode || "").toUpperCase();
@@ -134,17 +132,6 @@ export default function RoomPage() {
     if (state && toast.indexOf("Disconnected") === 0) setToast("");
   }, [state, toast]);
 
-  // Initialize lobby assignments when state changes
-  useEffect(() => {
-    if (state && Object.keys(lobbyAssignments).length === 0) {
-      const initialAssignments = {};
-      state.players.forEach((p, idx) => {
-        initialAssignments[p.index] = idx < Math.ceil(state.players.length / 2) ? 1 : 2;
-      });
-      setLobbyAssignments(initialAssignments);
-    }
-  }, [state?.roomCode, state?.players.length]);
-
   const myTeam = state ? state.myIndex % 2 : 0;
   const myTurn = state && state.currentPlayer === state.myIndex;
   const currentPlayer = useMemo(() => {
@@ -192,7 +179,6 @@ export default function RoomPage() {
     }
   };
 
-  const startGame = () => socket.emit("startGame", { roomCode: code });
   const nextRound = () => socket.emit("nextRound", { roomCode: code });
   const leaveRoom = () => {
     socket.emit("leaveRoom");
@@ -214,35 +200,6 @@ export default function RoomPage() {
     setPendingTrumpCard(null);
   };
 
-  const movePlayerToLobby = (playerIndex, targetLobby) => {
-    setLobbyAssignments((prev) => ({
-      ...prev,
-      [playerIndex]: targetLobby,
-    }));
-  };
-
-  const randomizeLobbies = () => {
-    if (!state) return;
-    const assignments = {};
-    const players = [...state.players];
-    // Shuffle players
-    for (let i = players.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [players[i], players[j]] = [players[j], players[i]];
-    }
-    // Assign to alternating lobbies
-    players.forEach((p, idx) => {
-      assignments[p.index] = idx % 2 === 0 ? 1 : 2;
-    });
-    setLobbyAssignments(assignments);
-    setToast("Lobbies randomized!");
-    setTimeout(() => setToast(""), 1800);
-  };
-
-  const getLobbyPlayers = (lobbyNum) => {
-    if (!state) return [];
-    return state.players.filter((p) => lobbyAssignments[p.index] === lobbyNum);
-  };
 
   if (!state) {
     return (
@@ -388,101 +345,6 @@ export default function RoomPage() {
         </div>
       </div>
 
-      {state.status === "waiting" && state.players.length > 1 && (
-        <div className="lobby-section">
-          <div className="lobby-header">
-            <h3>Team Lobbies</h3>
-            {state.isHost && (
-              <button className="shuffle-btn" onClick={randomizeLobbies}>
-                🔀 Randomize
-              </button>
-            )}
-          </div>
-
-          <div className="lobbies-grid">
-            {[1, 2].map((lobbyNum) => {
-              const lobbyPlayers = getLobbyPlayers(lobbyNum);
-              return (
-                <div key={lobbyNum} className="lobby-card">
-                  <div className="lobby-title">Lobby {lobbyNum}</div>
-                  <div
-                    className="lobby-players"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (draggingPlayer !== null && state.isHost) {
-                        movePlayerToLobby(draggingPlayer, lobbyNum);
-                        setDraggingPlayer(null);
-                      }
-                    }}
-                  >
-                    {lobbyPlayers.length === 0 ? (
-                      <div className="empty-lobby">Empty</div>
-                    ) : (
-                      lobbyPlayers.map((p) => (
-                        <div
-                          key={p.index}
-                          className="lobby-player"
-                          draggable={state.isHost}
-                          onDragStart={() => {
-                            if (state.isHost) setDraggingPlayer(p.index);
-                          }}
-                          onDragEnd={() => setDraggingPlayer(null)}
-                        >
-                          <span className="player-avatar">
-                            {p.isBot ? "🤖" : "👤"}
-                          </span>
-                          <span className="player-info">
-                            <span className="player-name">{p.name}</span>
-                            {p.index === state.myIndex && (
-                              <span className="player-badge">You</span>
-                            )}
-                            {p.isBot && (
-                              <span className="player-badge bot">Bot</span>
-                            )}
-                          </span>
-                          {state.isHost && (
-                            <div className="player-actions">
-                              {lobbyNum === 1 ? (
-                                <button
-                                  className="move-btn"
-                                  onClick={() => movePlayerToLobby(p.index, 2)}
-                                  title="Move to Lobby 2"
-                                >
-                                  →
-                                </button>
-                              ) : (
-                                <button
-                                  className="move-btn"
-                                  onClick={() => movePlayerToLobby(p.index, 1)}
-                                  title="Move to Lobby 1"
-                                >
-                                  ←
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="lobby-count">
-                    {lobbyPlayers.length} player{lobbyPlayers.length !== 1 ? "s" : ""}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="lobby-info">
-            <p>
-              {state.isHost
-                ? "Drag players between lobbies or click the arrows to move them. Partners in the same lobby will be on the same team."
-                : "Waiting for host to assign teams..."}
-            </p>
-          </div>
-        </div>
-      )}
 
       <div className="table-wrap">
         <div className={"felt seats-" + state.playerCount}>
@@ -512,11 +374,6 @@ export default function RoomPage() {
 
       <div className="bottom-panel">
         <div className="host-actions">
-          {state.isHost && state.status === "waiting" ? (
-            <button className="start-btn" onClick={startGame}>
-              Start Game
-            </button>
-          ) : null}
           {state.isHost && state.status === "roundOver" ? (
             <button className="start-btn" onClick={nextRound}>
               Next Round
