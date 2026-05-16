@@ -86,6 +86,34 @@ function wouldWin(r, pi, card, pt) {
 function lowest(cs)  { return [...cs].sort((a, b) => rank(a) - rank(b))[0]; }
 function highest(cs) { return [...cs].sort((a, b) => rank(b) - rank(a))[0]; }
 
+// ─── Card memory helpers ──────────────────────────────────────
+
+// Returns Set of card IDs that have been played in previous tricks
+// (computed as: all cards − cards still in hands − cards in current trick)
+function getPlayedCardIds(r) {
+  const inPlay = new Set();
+  for (const hand of r.hands) for (const c of hand) inPlay.add(c.id);
+  for (const t of r.trick) inPlay.add(t.card.id);
+  const played = new Set();
+  for (const s of SUITS) for (const v of VALS) {
+    const id = s + v;
+    if (!inPlay.has(id)) played.add(id);
+  }
+  return played;
+}
+
+// True if no higher card in the same suit is still in play (unplayed and not in my hand)
+function isEstablishedWinner(card, r, pi, played) {
+  const mine = new Set((r.hands[pi] || []).map((c) => c.id));
+  const inTrick = new Set(r.trick.map((t) => t.card.id));
+  for (const v of VALS) {
+    if (RANK[v] <= rank(card)) continue;
+    const id = card.s + v;
+    if (!mine.has(id) && !played.has(id) && !inTrick.has(id)) return false;
+  }
+  return true;
+}
+
 // ─── Bot difficulty ───────────────────────────────────────────
 
 function botNoob(playable) {
@@ -133,31 +161,62 @@ function botMedium(r, pi, playable) {
 }
 
 function botPro(r, pi, playable) {
-  const myTeam = teamOf(pi);
-  const hand = r.hands[pi] || [];
+  const myTeam   = teamOf(pi);
+  const hand     = r.hands[pi] || [];
   const cannotFollow = r.trick.length > 0 && !canFollowLedSuit(r, pi);
 
-  const myTens  = (r.capturedTens?.[myTeam] || []).length;
-  const oppTens = (r.capturedTens?.[1 - myTeam] || []).length;
-  const myTricks  = r.tricksWon?.[myTeam] || 0;
+  // ── Card memory ──────────────────────────────────────────────
+  const played = getPlayedCardIds(r);
+  const voids  = r.voids || [];
+  const isVoidIn = (idx, suit) => voids[idx] && voids[idx][suit];
+  const oppsVoidIn = (suit) =>
+    r.players
+      .filter((p) => teamOf(p.index) !== myTeam)
+      .every((p) => isVoidIn(p.index, suit));
+
+  // ── Situation ────────────────────────────────────────────────
+  const myTens   = (r.capturedTens?.[myTeam]       || []).length;
+  const oppTens  = (r.capturedTens?.[1 - myTeam]   || []).length;
+  const myTricks  = r.tricksWon?.[myTeam]     || 0;
   const oppTricks = r.tricksWon?.[1 - myTeam] || 0;
+  const cpp = Math.floor(52 / r.playerCount);          // cards per player = total tricks
+  const remainingTricks = cpp - (myTricks + oppTricks);
 
-  const tensInHand = playable.filter(isTen);
-  const goingForMendikot = myTens === 3;
+  const goingForMendikot   = myTens === 3;
   const oppGoingForMendikot = oppTens === 3;
-  // We might lose Bawanya if opponents have all tricks so far
-  const mustWinTrick = myTricks === 0 && oppTricks >= 3;
+  const bawanyaRisk = myTricks === 0 && oppTricks >= Math.ceil(cpp * 0.35);
 
-  // Trump declaration forced
+  const tensInPlay = playable.filter(isTen);
+  const wins       = playable.filter((c) => wouldWin(r, pi, c, r.trump));
+  const nonTrumpWins = r.trump ? wins.filter((c) => c.s !== r.trump) : wins;
+  const trumpWins    = r.trump ? wins.filter((c) => c.s === r.trump)  : [];
+
+  // Use cheapest win; always prefer non-trump over trump; lowest trump over high trump
+  const cheapestWin = () => {
+    if (nonTrumpWins.length > 0) return lowest(nonTrumpWins);
+    if (trumpWins.length > 0)    return lowest(trumpWins);
+    return null;
+  };
+
+  // Lowest non-ten, avoiding trump when possible
+  const safeDiscard = () => {
+    const noTens    = playable.filter((c) => !isTen(c));
+    const noTrump   = r.trump ? noTens.filter((c) => c.s !== r.trump) : noTens;
+    const src = noTrump.length > 0 ? noTrump : noTens.length > 0 ? noTens : playable;
+    return lowest(src);
+  };
+
+  // ── Trump declaration forced (no trump yet, can't follow) ────
   if (!r.trump && cannotFollow) {
     const led = r.trick[0].card.s;
-    const counts = { s: 0, h: 0, d: 0, c: 0 };
-    for (const c of hand) counts[c.s]++;
-    const best = Object.keys(counts)
-      .filter((s) => s !== led && counts[s] > 0)
-      .sort((a, b) => counts[b] - counts[a])[0];
-    if (best) {
-      const cs = playable.filter((c) => c.s === best);
+    // Pick longest suit (not the led suit) as new trump; play lowest from it
+    const bySuit = SUITS
+      .filter((s) => s !== led)
+      .map((s) => ({ s, cards: hand.filter((c) => c.s === s) }))
+      .filter((x) => x.cards.length > 0)
+      .sort((a, b) => b.cards.length - a.cards.length);
+    if (bySuit.length > 0) {
+      const cs = playable.filter((c) => c.s === bySuit[0].s);
       if (cs.length > 0) return { card: lowest(cs) };
     }
     return { card: lowest(playable) };
@@ -167,43 +226,74 @@ function botPro(r, pi, playable) {
 
   const wp = currentWinnerIndex(r);
   const partnerWinning = wp !== null && teamOf(wp) === myTeam;
-  const trickHasTen = r.trick.some((t) => isTen(t.card));
-  const wins = playable.filter((c) => wouldWin(r, pi, c, r.trump));
+  const trickHasTen    = r.trick.some((t) => isTen(t.card));
 
+  // ═══════════════ LEADING ════════════════════════════════════
   if (r.trick.length === 0) {
-    // Lead a ten when chasing Mendikot
-    if (goingForMendikot && tensInHand.length > 0) return { card: tensInHand[0] };
-    // Aggressive when opp is chasing Mendikot: lead trump to win tricks
-    if (oppGoingForMendikot) {
-      const trumps = r.trump ? playable.filter((c) => c.s === r.trump) : [];
-      if (trumps.length > 0) return { card: highest(trumps) };
+    // Chase Mendikot: lead our pending ten first
+    if (goingForMendikot && tensInPlay.length > 0) return { card: tensInPlay[0] };
+
+    // Counter opponent Mendikot: lead highest trump to pull the outstanding ten
+    if (oppGoingForMendikot && r.trump) {
+      const myTrumps = playable.filter((c) => c.s === r.trump);
+      if (myTrumps.length > 0) return { card: highest(myTrumps) };
     }
-    // Bawanya prevention: must win tricks
-    if (mustWinTrick && wins.length > 0) return { card: lowest(wins) };
-    // Default: highest non-trump
-    const nt = r.trump ? playable.filter((c) => c.s !== r.trump) : playable;
-    return { card: highest(nt.length > 0 ? nt : playable) };
+
+    // Bawanya prevention: win at least one trick cheaply
+    if (bawanyaRisk) {
+      const w = cheapestWin();
+      if (w) return { card: w };
+    }
+
+    const nt   = r.trump ? playable.filter((c) => c.s !== r.trump) : playable;
+    const pool = nt.length > 0 ? nt : playable;
+
+    // Lead a suit all opponents are known void in (they can't follow = safe for us)
+    const voidSuitCards = pool.filter(
+      (c) => c.s !== r.trump && oppsVoidIn(c.s)
+    );
+    if (voidSuitCards.length > 0) return { card: highest(voidSuitCards) };
+
+    // Lead established winners — cards that are highest remaining in their suit
+    const winners = pool.filter((c) => isEstablishedWinner(c, r, pi, played));
+    if (winners.length > 0) return { card: highest(winners) };
+
+    // Fallback: lead highest non-trump
+    return { card: highest(pool) };
   }
 
-  // Following
+  // ═══════════════ FOLLOWING ══════════════════════════════════
+
+  // Partner is winning — ride it
   if (partnerWinning) {
-    // Dump a ten on partner (they'll collect it for us)
-    if (tensInHand.length > 0) return { card: tensInHand[0] };
-    return { card: lowest(playable) };
+    // Unload a ten so partner collects it
+    if (tensInPlay.length > 0) return { card: tensInPlay[0] };
+    return { card: safeDiscard() };
   }
 
-  // Opponent winning — fight for it
-  if (trickHasTen || oppGoingForMendikot || mustWinTrick) {
-    if (wins.length > 0) return { card: lowest(wins) };
-    // Can't win — protect our tens from going to opponents
-    const safe = playable.filter((c) => !isTen(c));
-    const nt = r.trump ? safe.filter((c) => c.s !== r.trump) : safe;
-    return { card: lowest((nt.length > 0 ? nt : safe.length > 0 ? safe : playable)) };
+  // Opponent is winning — decide whether to fight
+  const mustFight = trickHasTen || oppGoingForMendikot || bawanyaRisk || goingForMendikot;
+
+  if (mustFight) {
+    const w = cheapestWin();
+    if (w) return { card: w };
+    // Can't win — protect our valuables
+    return { card: safeDiscard() };
   }
 
-  if (wins.length > 0) return { card: lowest(wins) };
-  const nt = r.trump ? playable.filter((c) => c.s !== r.trump) : playable;
-  return { card: lowest(nt.length > 0 ? nt : playable) };
+  // Ordinary trick, opponent winning — win cheaply or let it go
+  if (wins.length > 0) {
+    const w = cheapestWin();
+    if (w) {
+      // Don't burn a Queen/King/Ace of trump on a trivial trick when game is young
+      if (r.trump && w.s === r.trump && rank(w) >= RANK["Q"] && remainingTricks > 4) {
+        return { card: safeDiscard() };
+      }
+      return { card: w };
+    }
+  }
+
+  return { card: safeDiscard() };
 }
 
 function chooseBotMove(r, pi) {
@@ -236,6 +326,14 @@ function playCardCore(r, pi, cardId) {
   }
 
   r.hands[pi] = sortHand(hand.filter((c) => c.id !== cardId));
+  // Track void: if player doesn't follow the led suit, record they're void in it
+  if (r.trick.length > 0) {
+    const ledSuit = r.trick[0].card.s;
+    if (card.s !== ledSuit) {
+      if (!r.voids) r.voids = Array.from({ length: r.playerCount }, () => ({}));
+      r.voids[pi][ledSuit] = true;
+    }
+  }
   r.trick.push({ playerIndex: pi, playerName: r.players[pi].name, card });
 
   if (r.trick.length === r.playerCount) return { ok: true, trickComplete: true, trumpJustSet };
@@ -269,6 +367,7 @@ function startGame(r, intensity) {
   r.tricksWon  = [0, 0];
   r.tensWon    = [0, 0];
   r.capturedTens   = [[], []];
+  r.voids = Array.from({ length: r.playerCount }, () => ({}));
   r.lastRoundResult = null;
 
   const eff = (intensity != null) ? Math.max(1, Math.min(100, intensity)) : 85;
