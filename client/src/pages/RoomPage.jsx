@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { socket } from "../socket";
+import * as sounds from "../sounds";
+import { isMuted, toggleMute, onMuteChange } from "../sounds";
 
 const SUIT_SYMBOL = { s: "♠", h: "♥", d: "♦", c: "♣" };
 const SUIT_NAME   = { s: "Spades", h: "Hearts", d: "Diamonds", c: "Clubs" };
@@ -55,15 +57,74 @@ function TenChip({ card }) {
   );
 }
 
+function ShuffleMeter({ onSubmit, isMyTurn }) {
+  const [pos, setPos] = useState(50);
+  const [locked, setLocked] = useState(false);
+  const posRef = useRef(50);
+  const rafRef = useRef(null);
+  const startRef = useRef(null);
+
+  useEffect(() => {
+    if (locked || !isMyTurn) return;
+    const animate = (ts) => {
+      if (!startRef.current) startRef.current = ts;
+      const elapsed = ts - startRef.current;
+      // Sine oscillation: 50 ± 50, full cycle every 2.8s
+      const angle = (elapsed / 1400) * Math.PI;
+      const raw = 50 + 50 * Math.sin(angle);
+      posRef.current = Math.round(raw);
+      setPos(posRef.current);
+      rafRef.current = requestAnimationFrame(animate);
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [locked, isMyTurn]);
+
+  const lock = () => { if (!locked && isMyTurn) setLocked(true); };
+
+  return (
+    <div className="shuffle-meter">
+      <div className="sm-label">
+        {isMyTurn
+          ? locked
+            ? "Got it! Hit Shuffle & Deal when ready."
+            : "Click the bar (or button) to stop the needle!"
+          : "Waiting for the shuffler..."}
+      </div>
+
+      <div className="sm-track" onClick={lock} role="button" aria-label="Stop needle">
+        <div className="sm-fill" style={{ width: pos + "%" }} />
+        <div className="sm-needle" style={{ left: pos + "%" }} />
+      </div>
+
+      <div className="sm-zones">
+        <span className="sm-zone">Predictable</span>
+        <span className="sm-zone" style={{ textAlign: "right" }}>Random</span>
+      </div>
+
+      <div className="sm-value">{pos}%</div>
+
+      {isMyTurn && !locked && (
+        <button className="start-btn sm-submit-btn sm-stop-btn" onClick={lock}>
+          Stop!
+        </button>
+      )}
+      {isMyTurn && locked && (
+        <button className="start-btn sm-submit-btn" onClick={() => onSubmit(posRef.current)}>
+          Shuffle &amp; Deal!
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RoundResultOverlay({ result, myTeam, isHost, onNextRound, onPlayAgain, isGameOver }) {
   if (!result) return null;
   const myTeamWon = result.winner === myTeam;
-  const oppTeam = 1 - myTeam;
 
   return (
     <div className="modal-backdrop result-backdrop">
       <div className="result-modal">
-        {/* Header */}
         <div className={"result-header " + (myTeamWon ? "result-win" : "result-lose")}>
           <div className="result-emoji">{myTeamWon ? "🎉" : "😔"}</div>
           <div className="result-headline">
@@ -80,7 +141,6 @@ function RoundResultOverlay({ result, myTeam, isHost, onNextRound, onPlayAgain, 
           </div>
         </div>
 
-        {/* Round breakdown */}
         <div className="result-teams">
           {[0, 1].map((t) => {
             const isMe = t === myTeam;
@@ -114,7 +174,6 @@ function RoundResultOverlay({ result, myTeam, isHost, onNextRound, onPlayAgain, 
           })}
         </div>
 
-        {/* Match standings */}
         <div className="result-standings">
           <div className="result-standings-title">Match Standing</div>
           <div className="result-standing-row">
@@ -132,7 +191,6 @@ function RoundResultOverlay({ result, myTeam, isHost, onNextRound, onPlayAgain, 
           </div>
         </div>
 
-        {/* Action */}
         <div className="result-actions">
           {isHost ? (
             <button
@@ -159,13 +217,20 @@ export default function RoomPage() {
   const [toast, setToast] = useState("");
   const [pendingTrumpCard, setPendingTrumpCard] = useState(null);
   const [showResult, setShowResult] = useState(false);
+  const [mutedUI, setMutedUI] = useState(isMuted());
 
-  const stateRef = useRef(null);
+  const stateRef     = useRef(null);
+  const prevStateRef = useRef(null);
   const lastResultIdRef = useRef(null);
   const code = (roomCode || "").toUpperCase();
   const playerName = localStorage.getItem("playerName");
 
   useEffect(() => { stateRef.current = state; }, [state]);
+
+  // Keep muted UI state in sync with the sounds module
+  useEffect(() => {
+    return onMuteChange((v) => setMutedUI(v));
+  }, []);
 
   useEffect(() => {
     if (!playerName) { navigate("/"); return; }
@@ -181,20 +246,19 @@ export default function RoomPage() {
       setState(s);
       setError("");
       if (s.status === "waiting") { navigate("/room/" + s.roomCode + "/lobby"); return; }
-      // Show result overlay when a new round result arrives
       if (s.lastRoundResult && s.lastRoundResult.id !== lastResultIdRef.current) {
         lastResultIdRef.current = s.lastRoundResult.id;
         setShowResult(true);
       }
       if (s.status === "playing") setShowResult(false);
     };
-    const handleError = (msg) => setError(typeof msg === "string" ? msg : "Server error.");
-    const handleSession = (data) => {
+    const handleError    = (msg) => setError(typeof msg === "string" ? msg : "Server error.");
+    const handleSession  = (data) => {
       if (data?.roomCode && data?.token) localStorage.setItem("token:" + data.roomCode, data.token);
     };
     const handleReconnectFailed = () => socket.emit("joinRoom", { roomCode: code, name: playerName });
     const handleNeedTrump = (data) => setPendingTrumpCard(data.cardId);
-    const handleConnect = () => attemptJoin();
+    const handleConnect  = () => attemptJoin();
     const handleDisconnect = () => setToast("Disconnected — reconnecting...");
 
     socket.on("state", handleState);
@@ -223,9 +287,60 @@ export default function RoomPage() {
     };
   }, [code, playerName, navigate]);
 
+  // Clear "Disconnected" toast once state reconnects
   useEffect(() => {
     if (state && toast.includes("Disconnected")) setToast("");
   }, [state, toast]);
+
+  // Sound effects — detect changes between state snapshots
+  useEffect(() => {
+    if (!state) return;
+    const prev = prevStateRef.current;
+    prevStateRef.current = state;
+    if (!prev) return;
+
+    const myTeamNow = state.myIndex % 2;
+
+    // Card played — trick grew
+    if (state.trick.length > prev.trick.length) {
+      sounds.cardPlay();
+    }
+
+    // Trick resolved — trick cleared while game is still playing
+    if (prev.trick.length > 0 && state.trick.length === 0 && state.status === "playing") {
+      const prevTens = (prev.capturedTens?.[0]?.length || 0) + (prev.capturedTens?.[1]?.length || 0);
+      const nowTens  = (state.capturedTens?.[0]?.length || 0) + (state.capturedTens?.[1]?.length || 0);
+      if (nowTens > prevTens) sounds.tenCapture();
+      else sounds.trickWin();
+    }
+
+    // Cards dealt
+    if (state.myHand.length > 0 && prev.myHand.length === 0) {
+      sounds.deal();
+    }
+
+    // Shuffling started
+    if (state.status === "shuffling" && prev.status !== "shuffling") {
+      sounds.shuffle();
+    }
+
+    // Round ended
+    if ((state.status === "roundOver" || state.status === "gameOver") &&
+        prev.status !== "roundOver" && prev.status !== "gameOver") {
+      const r = state.lastRoundResult;
+      if (r?.bawanya)   sounds.bawanya();
+      else if (r?.mendikot) sounds.mendikot();
+      else sounds.roundEnd();
+    }
+
+    // Game over
+    if (state.status === "gameOver" && prev.status !== "gameOver") {
+      setTimeout(() => {
+        if (state.winningTeam === myTeamNow) sounds.gameWin();
+        else sounds.gameLoss();
+      }, 700);
+    }
+  }, [state]);
 
   const myTeam = state ? state.myIndex % 2 : 0;
   const myTurn = state && state.currentPlayer === state.myIndex;
@@ -263,10 +378,12 @@ export default function RoomPage() {
     }
   };
 
-  const nextRound  = () => socket.emit("nextRound", { roomCode: code });
-  const leaveRoom  = () => { socket.emit("leaveRoom"); navigate("/"); };
-  const playCard   = (card) => socket.emit("playCard", { roomCode: code, cardId: card.id, selectedTrump: null });
-  const chooseTrump = (suit) => {
+  const nextRound    = () => socket.emit("nextRound",    { roomCode: code });
+  const leaveRoom    = () => { socket.emit("leaveRoom"); navigate("/"); };
+  const kickPlayer   = (playerIndex) => socket.emit("kickPlayer", { roomCode: code, playerIndex });
+  const submitShuffle = (intensity) => socket.emit("submitShuffle", { roomCode: code, intensity });
+  const playCard     = (card) => socket.emit("playCard", { roomCode: code, cardId: card.id, selectedTrump: null });
+  const chooseTrump  = (suit) => {
     if (!pendingTrumpCard) return;
     socket.emit("playCard", { roomCode: code, cardId: pendingTrumpCard, selectedTrump: suit });
     setPendingTrumpCard(null);
@@ -288,21 +405,25 @@ export default function RoomPage() {
   }
 
   const trumpRed = state.trump === "h" || state.trump === "d";
+  const isShuffling = state.status === "shuffling";
+  const isDealer = state.dealer === state.myIndex;
 
   let centerText;
-  if (state.status === "roundOver") centerText = "Round Over";
-  else if (state.status === "gameOver") centerText = "Team " + ((state.winningTeam || 0) + 1) + " wins!";
-  else if (myTurn) centerText = "Your turn";
-  else centerText = (currentPlayer ? currentPlayer.name : "...") + " is playing";
+  if (isShuffling)                      centerText = state.message || "Shuffling...";
+  else if (state.status === "roundOver") centerText = "Round Over";
+  else if (state.status === "gameOver")  centerText = "Team " + ((state.winningTeam || 0) + 1) + " wins!";
+  else if (myTurn)                       centerText = "Your turn";
+  else                                   centerText = (currentPlayer ? currentPlayer.name : "...") + " is playing";
 
   const seats = [];
   for (let i = 0; i < state.players.length; i++) {
-    const p = state.players[i];
-    const slot  = seatFor(p.index);
-    const ally  = isAlly(p.index);
-    const me    = p.index === state.myIndex;
+    const p      = state.players[i];
+    const slot   = seatFor(p.index);
+    const ally   = isAlly(p.index);
+    const me     = p.index === state.myIndex;
     const active = state.currentPlayer === p.index && state.status === "playing";
     const played = state.trick.find((t) => t.playerIndex === p.index);
+    const isDealing = state.dealer === p.index;
 
     const seatClass =
       "seat seat-" + slot +
@@ -312,6 +433,16 @@ export default function RoomPage() {
     seats.push(
       <Fragment key={p.index}>
         <div className={seatClass}>
+          {/* Kick button — host only, non-bot, non-self */}
+          {state.isHost && !me && !p.isBot && (
+            <button
+              className="kick-btn"
+              onClick={() => kickPlayer(p.index)}
+              title="Replace with bot"
+            >
+              🤖
+            </button>
+          )}
           <div className="seat-head">
             <div className="avatar">{p.isBot ? "🤖" : "👤"}</div>
             <div className="seat-id">
@@ -320,6 +451,7 @@ export default function RoomPage() {
                 {me ? <span className="tag you">You</span>
                     : ally ? <span className="tag partner">Partner</span>
                            : <span className="tag opp">Opp</span>}
+                {isDealing && <span className="tag dealer">🃏</span>}
                 {p.isBot && <span className="tag bot">Bot</span>}
                 {!p.connected && <span className="tag off">Off</span>}
               </div>
@@ -338,7 +470,6 @@ export default function RoomPage() {
     );
   }
 
-  // Captured tens for the scoreboard
   const ct0 = state.capturedTens?.[0] || [];
   const ct1 = state.capturedTens?.[1] || [];
 
@@ -350,6 +481,9 @@ export default function RoomPage() {
           <p className="msg">{state.message}</p>
         </div>
         <div className="top-actions">
+          <button className={"mute-btn" + (mutedUI ? " muted" : "")} onClick={() => { toggleMute(); }}>
+            {mutedUI ? "🔇" : "🔊"}
+          </button>
           <button onClick={copyInvite}>Invite</button>
           <button onClick={leaveRoom}>Leave</button>
         </div>
@@ -461,6 +595,27 @@ export default function RoomPage() {
           )}
         </div>
       </div>
+
+      {/* ---- Shuffling Overlay ---- */}
+      {isShuffling && (
+        <div className="modal-backdrop shuffle-backdrop">
+          <div className="shuffle-modal">
+            <div className="shuffle-title">
+              {isDealer ? "Your turn to shuffle! 🃏" : (state.message || "Shuffling...")}
+            </div>
+            {isDealer ? (
+              <ShuffleMeter onSubmit={submitShuffle} isMyTurn={true} />
+            ) : (
+              <div className="shuffle-waiting">
+                <div className="shuffle-spinner" />
+                <p className="shuffle-waiting-text">
+                  {state.players[state.dealer]?.name || "Someone"} is shuffling...
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ---- Round Result Overlay ---- */}
       {showResult && state.lastRoundResult && (

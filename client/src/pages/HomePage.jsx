@@ -3,18 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { socket } from "../socket";
 
 export default function HomePage() {
-  const [name, setName] = useState(localStorage.getItem("playerName") || "");
+  const [name, setName]       = useState(localStorage.getItem("playerName") || "");
   const [joinCode, setJoinCode] = useState("");
-  const [mode, setMode] = useState("4p");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [mode, setMode]       = useState("4p");
+  const [difficulty, setDifficulty] = useState("pro");
+  const [error, setError]     = useState("");
+  const [busy, setBusy]       = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const handleSession = ({ roomCode, token }) => {
-      if (roomCode && token) {
-        localStorage.setItem(`token:${roomCode}`, token);
-      }
+      if (roomCode && token) localStorage.setItem(`token:${roomCode}`, token);
     };
     const handleError = (msg) => {
       setBusy(false);
@@ -30,16 +29,13 @@ export default function HomePage() {
 
   const validateName = () => {
     const safeName = name.trim();
-    if (!safeName) {
-      setError("Please enter your name.");
-      return null;
-    }
+    if (!safeName) { setError("Please enter your name."); return null; }
     localStorage.setItem("playerName", safeName);
     setError("");
     return safeName;
   };
 
-  const launch = (event) => {
+  const launch = (event, extra = {}) => {
     const safeName = validateName();
     if (!safeName || busy) return;
     setBusy(true);
@@ -53,42 +49,37 @@ export default function HomePage() {
     };
     const onState = (state) => {
       if (settled) return;
-      cleanup();
-      setBusy(false);
+      cleanup(); setBusy(false);
       navigate(`/room/${state.roomCode}/lobby`);
     };
     const onError = (msg) => {
       if (settled) return;
-      cleanup();
-      setBusy(false);
+      cleanup(); setBusy(false);
       setError(typeof msg === "string" ? msg : "Server error.");
     };
     const timer = setTimeout(() => {
       if (settled) return;
-      cleanup();
-      setBusy(false);
+      cleanup(); setBusy(false);
       setError("Server didn't respond. Try again.");
     }, 8000);
 
     socket.on("state", onState);
     socket.on("errorMessage", onError);
-    socket.emit(event, { name: safeName, mode });
+    socket.emit(event, { name: safeName, mode, ...extra });
   };
 
-  const createRoom = () => launch("createRoom");
-  const createBotGame = () => launch("createBotGame");
+  const createRoom    = () => launch("createRoom");
+  const createBotGame = () => launch("createBotGame", { difficulty });
 
   const joinRoom = () => {
     const safeName = validateName();
     if (!safeName) return;
-
-    const code = joinCode.trim().toUpperCase();
-    if (!/^[A-Z0-9]{5}$/.test(code)) {
+    const c = joinCode.trim().toUpperCase();
+    if (!/^[A-Z0-9]{5}$/.test(c)) {
       setError("Room code must be 5 letters or numbers.");
       return;
     }
-
-    navigate(`/room/${code}/lobby`);
+    navigate(`/room/${c}/lobby`);
   };
 
   return (
@@ -107,18 +98,10 @@ export default function HomePage() {
         />
 
         <div className="mode-buttons">
-          <button
-            className={mode === "4p" ? "mode active" : "mode"}
-            onClick={() => setMode("4p")}
-            type="button"
-          >
+          <button className={mode === "4p" ? "mode active" : "mode"} onClick={() => setMode("4p")} type="button">
             4 Player
           </button>
-          <button
-            className={mode === "6p" ? "mode active" : "mode"}
-            onClick={() => setMode("6p")}
-            type="button"
-          >
+          <button className={mode === "6p" ? "mode active" : "mode"} onClick={() => setMode("6p")} type="button">
             6 Player
           </button>
         </div>
@@ -126,11 +109,7 @@ export default function HomePage() {
         {error && <div className="error-box">{error}</div>}
 
         <div className="button-grid">
-          <button
-            className="primary-btn"
-            onClick={createRoom}
-            disabled={busy}
-          >
+          <button className="primary-btn" onClick={createRoom} disabled={busy}>
             {busy ? "Creating..." : "Create Multiplayer Room"}
           </button>
 
@@ -150,11 +129,29 @@ export default function HomePage() {
 
         <div className="bot-box">
           <p>Play offline against bots in the selected mode.</p>
-          <button
-            className="primary-btn"
-            onClick={createBotGame}
-            disabled={busy}
-          >
+
+          <div className="difficulty-row">
+            <span className="difficulty-label">Bot difficulty</span>
+            <div className="difficulty-btns">
+              {[
+                { id: "noob",   label: "Noob",   desc: "Random" },
+                { id: "medium", label: "Medium",  desc: "Strategy" },
+                { id: "pro",    label: "Pro",     desc: "Full tracking" },
+              ].map(({ id, label, desc }) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={"diff-btn" + (difficulty === id ? " diff-active" : "")}
+                  onClick={() => setDifficulty(id)}
+                  title={desc}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <button className="primary-btn" onClick={createBotGame} disabled={busy}>
             {busy ? "Loading..." : "Play With Bots"}
           </button>
         </div>
