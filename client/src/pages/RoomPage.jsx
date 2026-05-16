@@ -57,66 +57,6 @@ function TenChip({ card }) {
   );
 }
 
-function ShuffleMeter({ onSubmit, isMyTurn }) {
-  const [pos, setPos] = useState(50);
-  const [locked, setLocked] = useState(false);
-  const posRef = useRef(50);
-  const rafRef = useRef(null);
-  const startRef = useRef(null);
-
-  useEffect(() => {
-    if (locked || !isMyTurn) return;
-    const animate = (ts) => {
-      if (!startRef.current) startRef.current = ts;
-      const elapsed = ts - startRef.current;
-      // Sine oscillation: 50 ± 50, full cycle every 2.8s
-      const angle = (elapsed / 1400) * Math.PI;
-      const raw = 50 + 50 * Math.sin(angle);
-      posRef.current = Math.round(raw);
-      setPos(posRef.current);
-      rafRef.current = requestAnimationFrame(animate);
-    };
-    rafRef.current = requestAnimationFrame(animate);
-    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, [locked, isMyTurn]);
-
-  const lock = () => { if (!locked && isMyTurn) setLocked(true); };
-
-  return (
-    <div className="shuffle-meter">
-      <div className="sm-label">
-        {isMyTurn
-          ? locked
-            ? "Got it! Hit Shuffle & Deal when ready."
-            : "Click the bar (or button) to stop the needle!"
-          : "Waiting for the shuffler..."}
-      </div>
-
-      <div className="sm-track" onClick={lock} role="button" aria-label="Stop needle">
-        <div className="sm-fill" style={{ width: pos + "%" }} />
-        <div className="sm-needle" style={{ left: pos + "%" }} />
-      </div>
-
-      <div className="sm-zones">
-        <span className="sm-zone">Predictable</span>
-        <span className="sm-zone" style={{ textAlign: "right" }}>Random</span>
-      </div>
-
-      <div className="sm-value">{pos}%</div>
-
-      {isMyTurn && !locked && (
-        <button className="start-btn sm-submit-btn sm-stop-btn" onClick={lock}>
-          Stop!
-        </button>
-      )}
-      {isMyTurn && locked && (
-        <button className="start-btn sm-submit-btn" onClick={() => onSubmit(posRef.current)}>
-          Shuffle &amp; Deal!
-        </button>
-      )}
-    </div>
-  );
-}
 
 function RoundResultOverlay({ result, myTeam, isHost, onNextRound, onPlayAgain, isGameOver }) {
   if (!result) return null;
@@ -378,11 +318,10 @@ export default function RoomPage() {
     }
   };
 
-  const nextRound    = () => socket.emit("nextRound",    { roomCode: code });
-  const leaveRoom    = () => { socket.emit("leaveRoom"); navigate("/"); };
-  const kickPlayer   = (playerIndex) => socket.emit("kickPlayer", { roomCode: code, playerIndex });
-  const submitShuffle = (intensity) => socket.emit("submitShuffle", { roomCode: code, intensity });
-  const playCard     = (card) => socket.emit("playCard", { roomCode: code, cardId: card.id, selectedTrump: null });
+  const nextRound  = () => socket.emit("nextRound",  { roomCode: code });
+  const leaveRoom  = () => { socket.emit("leaveRoom"); navigate("/"); };
+  const kickPlayer = (playerIndex) => socket.emit("kickPlayer", { roomCode: code, playerIndex });
+  const playCard   = (card) => socket.emit("playCard", { roomCode: code, cardId: card.id, selectedTrump: null });
   const chooseTrump  = (suit) => {
     if (!pendingTrumpCard) return;
     socket.emit("playCard", { roomCode: code, cardId: pendingTrumpCard, selectedTrump: suit });
@@ -406,7 +345,6 @@ export default function RoomPage() {
 
   const trumpRed = state.trump === "h" || state.trump === "d";
   const isShuffling = state.status === "shuffling";
-  const isDealer = state.dealer === state.myIndex;
 
   let centerText;
   if (isShuffling)                      centerText = state.message || "Shuffling...";
@@ -600,19 +538,13 @@ export default function RoomPage() {
       {isShuffling && (
         <div className="modal-backdrop shuffle-backdrop">
           <div className="shuffle-modal">
-            <div className="shuffle-title">
-              {isDealer ? "Your turn to shuffle! 🃏" : (state.message || "Shuffling...")}
+            <div className="shuffle-title">🃏 Shuffling cards...</div>
+            <div className="shuffle-waiting">
+              <div className="shuffle-spinner" />
+              <p className="shuffle-waiting-text">
+                {state.players[state.dealer]?.name || "Someone"} is shuffling
+              </p>
             </div>
-            {isDealer ? (
-              <ShuffleMeter onSubmit={submitShuffle} isMyTurn={true} />
-            ) : (
-              <div className="shuffle-waiting">
-                <div className="shuffle-spinner" />
-                <p className="shuffle-waiting-text">
-                  {state.players[state.dealer]?.name || "Someone"} is shuffling...
-                </p>
-              </div>
-            )}
           </div>
         </div>
       )}
