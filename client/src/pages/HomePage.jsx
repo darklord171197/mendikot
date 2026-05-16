@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { socket } from "../socket";
 
@@ -6,52 +6,85 @@ export default function HomePage() {
   const [name, setName] = useState(localStorage.getItem("playerName") || "");
   const [joinCode, setJoinCode] = useState("");
   const [mode, setMode] = useState("4p");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const navigate = useNavigate();
 
-  const saveName = () => {
+  useEffect(() => {
+    const handleSession = ({ roomCode, token }) => {
+      if (roomCode && token) {
+        localStorage.setItem(`token:${roomCode}`, token);
+      }
+    };
+    const handleError = (msg) => {
+      setBusy(false);
+      setError(typeof msg === "string" ? msg : "Something went wrong.");
+    };
+    socket.on("session", handleSession);
+    socket.on("errorMessage", handleError);
+    return () => {
+      socket.off("session", handleSession);
+      socket.off("errorMessage", handleError);
+    };
+  }, []);
+
+  const validateName = () => {
     const safeName = name.trim();
     if (!safeName) {
-      alert("Please enter your name.");
+      setError("Please enter your name.");
       return null;
     }
-
     localStorage.setItem("playerName", safeName);
+    setError("");
     return safeName;
   };
 
-  const createRoom = () => {
-    const safeName = saveName();
-    if (!safeName) return;
+  const launch = (event) => {
+    const safeName = validateName();
+    if (!safeName || busy) return;
+    setBusy(true);
 
-    socket.emit("createRoom", { name: safeName });
-
-    socket.once("state", (state) => {
+    let settled = false;
+    const cleanup = () => {
+      settled = true;
+      socket.off("state", onState);
+      socket.off("errorMessage", onError);
+      clearTimeout(timer);
+    };
+    const onState = (state) => {
+      if (settled) return;
+      cleanup();
+      setBusy(false);
       navigate(`/room/${state.roomCode}`);
-    });
+    };
+    const onError = (msg) => {
+      if (settled) return;
+      cleanup();
+      setBusy(false);
+      setError(typeof msg === "string" ? msg : "Server error.");
+    };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      cleanup();
+      setBusy(false);
+      setError("Server didn't respond. Try again.");
+    }, 8000);
+
+    socket.on("state", onState);
+    socket.on("errorMessage", onError);
+    socket.emit(event, { name: safeName, mode });
   };
 
-  const createBotGame = () => {
-    const safeName = saveName();
-    if (!safeName) return;
-
-    socket.emit("createBotGame", {
-      name: safeName,
-      mode,
-    });
-
-    socket.once("state", (state) => {
-      navigate(`/room/${state.roomCode}`);
-    });
-  };
+  const createRoom = () => launch("createRoom");
+  const createBotGame = () => launch("createBotGame");
 
   const joinRoom = () => {
-    const safeName = saveName();
+    const safeName = validateName();
     if (!safeName) return;
 
     const code = joinCode.trim().toUpperCase();
-
-    if (!code) {
-      alert("Please enter room code.");
+    if (!/^[A-Z0-9]{5}$/.test(code)) {
+      setError("Room code must be 5 letters or numbers.");
       return;
     }
 
@@ -69,12 +102,36 @@ export default function HomePage() {
           className="input"
           placeholder="Enter your name"
           value={name}
+          maxLength={20}
           onChange={(e) => setName(e.target.value)}
         />
 
+        <div className="mode-buttons">
+          <button
+            className={mode === "4p" ? "mode active" : "mode"}
+            onClick={() => setMode("4p")}
+            type="button"
+          >
+            4 Player
+          </button>
+          <button
+            className={mode === "6p" ? "mode active" : "mode"}
+            onClick={() => setMode("6p")}
+            type="button"
+          >
+            6 Player
+          </button>
+        </div>
+
+        {error && <div className="error-box">{error}</div>}
+
         <div className="button-grid">
-          <button className="primary-btn" onClick={createRoom}>
-            Create Multiplayer Room
+          <button
+            className="primary-btn"
+            onClick={createRoom}
+            disabled={busy}
+          >
+            {busy ? "Creating..." : "Create Multiplayer Room"}
           </button>
 
           <div className="join-box">
@@ -82,7 +139,8 @@ export default function HomePage() {
               className="input"
               placeholder="Room Code"
               value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
+              maxLength={5}
+              onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
             />
             <button className="secondary-btn" onClick={joinRoom}>
               Join Room
@@ -91,26 +149,13 @@ export default function HomePage() {
         </div>
 
         <div className="bot-box">
-          <p>Bot Mode</p>
-
-          <div className="mode-buttons">
-            <button
-              className={mode === "4p" ? "mode active" : "mode"}
-              onClick={() => setMode("4p")}
-            >
-              4 Player
-            </button>
-
-            <button
-              className={mode === "6p" ? "mode active" : "mode"}
-              onClick={() => setMode("6p")}
-            >
-              6 Player
-            </button>
-          </div>
-
-          <button className="primary-btn" onClick={createBotGame}>
-            Play With Bots
+          <p>Play offline against bots in the selected mode.</p>
+          <button
+            className="primary-btn"
+            onClick={createBotGame}
+            disabled={busy}
+          >
+            {busy ? "Loading..." : "Play With Bots"}
           </button>
         </div>
       </div>

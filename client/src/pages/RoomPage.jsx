@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { socket } from "../socket";
 
@@ -30,28 +30,60 @@ export default function RoomPage() {
 
   const [state, setState] = useState(null);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState("");
   const [pendingTrumpCard, setPendingTrumpCard] = useState(null);
 
+  // refs so callbacks always see latest values
+  const stateRef = useRef(null);
+  const joinedRef = useRef(false);
+  const code = (roomCode || "").toUpperCase();
   const playerName = localStorage.getItem("playerName");
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   useEffect(() => {
     if (!playerName) {
       navigate("/");
       return;
     }
+    if (!/^[A-Z0-9]{5}$/.test(code)) {
+      navigate("/");
+      return;
+    }
 
-    const code = roomCode?.toUpperCase();
+    const tokenKey = `token:${code}`;
+
+    const attemptJoin = () => {
+      const token = localStorage.getItem(tokenKey) || null;
+      // Try reconnect first (token-based, falls back to legacy name match
+      // on the server only if no token exists for that seat).
+      socket.emit("reconnectPlayer", {
+        roomCode: code,
+        name: playerName,
+        token,
+      });
+    };
 
     const handleState = (newState) => {
+      joinedRef.current = true;
       setState(newState);
       setError("");
     };
 
     const handleError = (msg) => {
-      setError(msg);
+      setError(typeof msg === "string" ? msg : "Server error.");
+    };
+
+    const handleSession = ({ roomCode: rc, token }) => {
+      if (rc && token) {
+        localStorage.setItem(`token:${rc}`, token);
+      }
     };
 
     const handleReconnectFailed = () => {
+      // No prior seat — try joining as a new player.
       socket.emit("joinRoom", {
         roomCode: code,
         name: playerName,
@@ -62,32 +94,58 @@ export default function RoomPage() {
       setPendingTrumpCard(cardId);
     };
 
+    const handleConnect = () => {
+      // Whenever the socket connects (initial or after a drop), try to
+      // (re)claim our seat.
+      attemptJoin();
+    };
+
+    const handleDisconnect = () => {
+      setToast("Disconnected — reconnecting...");
+    };
+
     socket.on("state", handleState);
     socket.on("errorMessage", handleError);
+    socket.on("session", handleSession);
     socket.on("reconnectFailed", handleReconnectFailed);
     socket.on("needTrump", handleNeedTrump);
+    socket.on("connect", handleConnect);
+    socket.on("disconnect", handleDisconnect);
 
-    socket.emit("reconnectPlayer", {
-      roomCode: code,
-      name: playerName,
-    });
+    if (socket.connected) {
+      attemptJoin();
+    }
 
-    setTimeout(() => {
-      if (!state) {
+    // Fallback: if we still have no state after 700ms, try joinRoom too.
+    const fallback = setTimeout(() => {
+      if (!stateRef.current) {
         socket.emit("joinRoom", {
           roomCode: code,
           name: playerName,
         });
       }
-    }, 500);
+    }, 700);
+
+    // Clear the disconnect toast when state arrives
+    const clearToast = setTimeout(() => setToast(""), 0);
 
     return () => {
+      clearTimeout(fallback);
+      clearTimeout(clearToast);
       socket.off("state", handleState);
       socket.off("errorMessage", handleError);
+      socket.off("session", handleSession);
       socket.off("reconnectFailed", handleReconnectFailed);
       socket.off("needTrump", handleNeedTrump);
+      socket.off("connect", handleConnect);
+      socket.off("disconnect", handleDisconnect);
     };
-  }, [roomCode, playerName, navigate]);
+  }, [code, playerName, navigate]);
+
+  // hide toast when state arrives after a reconnect
+  useEffect(() => {
+    if (state && toast) setToast("");
+  }, [state, toast]);
 
   const myTurn = state && state.currentPlayer === state.myIndex;
   const currentPlayer = useMemo(() => {
@@ -96,39 +154,52 @@ export default function RoomPage() {
   }, [state]);
 
   const copyInvite = async () => {
-    await navigator.clipboard.writeText(window.location.href);
-    alert("Room link copied.");
+    const text = window.location.href;
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback for non-secure contexts
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setToast("Room link copied.");
+      setTimeout(() => setToast(""), 1800);
+    } catch {
+      setToast("Couldn't copy automatically — copy the URL from the address bar.");
+      setTimeout(() => setToast(""), 2500);
+    }
   };
 
-  const startGame = () => {
-    socket.emit("startGame", {
-      roomCode,
-    });
+  const startGame = () => socket.emit("startGame", { roomCode: code });
+  const nextRound = () => socket.emit("nextRound", { roomCode: code });
+
+  const leaveRoom = () => {
+    socket.emit("leaveRoom");
+    navigate("/");
   };
 
-  const nextRound = () => {
-    socket.emit("nextRound", {
-      roomCode,
-    });
-  };
-
-  const playCard = (card, selectedTrump = null) => {
+  const playCard = (card) => {
     socket.emit("playCard", {
-      roomCode,
+      roomCode: code,
       cardId: card.id,
-      selectedTrump,
+      selectedTrump: null,
     });
   };
 
   const chooseTrump = (suit) => {
     if (!pendingTrumpCard) return;
-
     socket.emit("playCard", {
-      roomCode,
+      roomCode: code,
       cardId: pendingTrumpCard,
       selectedTrump: suit,
     });
-
     setPendingTrumpCard(null);
   };
 
@@ -137,11 +208,30 @@ export default function RoomPage() {
       <div className="game-page">
         <div className="loading-card">
           <h2>Connecting to room...</h2>
-          <p>Room: {roomCode}</p>
+          <p>Room: {code}</p>
+          {error && <div className="error-box">{error}</div>}
+          <button
+            className="secondary-btn"
+            style={{ marginTop: 16 }}
+            onClick={() => navigate("/")}
+          >
+            Back to home
+          </button>
         </div>
       </div>
     );
   }
+
+  const statusLabel =
+    state.status === "waiting"
+      ? `Waiting for players ${state.players.length}/${state.playerCount}`
+      : state.status === "roundOver"
+      ? "Round Over"
+      : state.status === "gameOver"
+      ? `Game Over — Team ${(state.winningTeam ?? 0) + 1} wins!`
+      : myTurn
+      ? "Your Turn"
+      : `${currentPlayer?.name || "Player"}'s Turn`;
 
   return (
     <div className="game-page">
@@ -153,11 +243,12 @@ export default function RoomPage() {
 
         <div className="top-actions">
           <button onClick={copyInvite}>Copy Invite Link</button>
-          <button onClick={() => navigate("/")}>Home</button>
+          <button onClick={leaveRoom}>Leave</button>
         </div>
       </div>
 
       {error && <div className="error-box">{error}</div>}
+      {toast && <div className="toast">{toast}</div>}
 
       <div className="score-board">
         <div>
@@ -170,6 +261,7 @@ export default function RoomPage() {
         <div>
           <span>Trump</span>
           <strong>{state.trump ? SUIT_SYMBOL[state.trump] : "Hidden"}</strong>
+          <small>First to {state.targetScore ?? 7}</small>
         </div>
 
         <div>
@@ -186,7 +278,9 @@ export default function RoomPage() {
             <div
               key={p.index}
               className={`player-pill ${
-                state.currentPlayer === p.index ? "active-turn" : ""
+                state.currentPlayer === p.index && state.status === "playing"
+                  ? "active-turn"
+                  : ""
               } ${p.index === state.myIndex ? "me" : ""}`}
             >
               <div className="avatar">{p.isBot ? "🤖" : "👤"}</div>
@@ -205,22 +299,17 @@ export default function RoomPage() {
         </div>
 
         <div className="center-table">
-          <div className="turn-label">
-            {state.status === "waiting"
-              ? `Waiting for players ${state.players.length}/${state.playerCount}`
-              : state.status === "roundOver"
-              ? "Round Over"
-              : myTurn
-              ? "Your Turn"
-              : `${currentPlayer?.name || "Player"}'s Turn`}
-          </div>
+          <div className="turn-label">{statusLabel}</div>
 
           <div className="trick-zone">
             {state.trick.length === 0 ? (
               <div className="empty-trick">No cards played yet</div>
             ) : (
               state.trick.map((t) => (
-                <div key={`${t.playerIndex}-${t.card.id}`} className="played-card-wrap">
+                <div
+                  key={`${t.playerIndex}-${t.card.id}`}
+                  className="played-card-wrap"
+                >
                   <Card card={t.card} playable={false} onClick={() => {}} />
                   <span>{t.playerName}</span>
                 </div>
@@ -243,12 +332,17 @@ export default function RoomPage() {
           </button>
         )}
 
+        {state.isHost && state.status === "gameOver" && (
+          <button className="start-btn" onClick={nextRound}>
+            Play Again
+          </button>
+        )}
+
         <h3>Your Cards</h3>
 
         <div className="hand">
           {state.myHand.map((card) => {
             const playable = state.playableCardIds?.includes(card.id);
-
             return (
               <Card
                 key={card.id}
@@ -265,7 +359,7 @@ export default function RoomPage() {
         <div className="modal-backdrop">
           <div className="trump-modal">
             <h2>Choose Trump</h2>
-            <p>You cannot follow suit. Select trump suit.</p>
+            <p>You cannot follow suit. Select a trump suit.</p>
 
             <div className="trump-options">
               {["s", "h", "d", "c"].map((suit) => (
@@ -275,7 +369,10 @@ export default function RoomPage() {
               ))}
             </div>
 
-            <button className="cancel-btn" onClick={() => setPendingTrumpCard(null)}>
+            <button
+              className="cancel-btn"
+              onClick={() => setPendingTrumpCard(null)}
+            >
               Cancel
             </button>
           </div>
