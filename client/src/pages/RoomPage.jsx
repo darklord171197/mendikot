@@ -1,26 +1,51 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { socket } from "../socket";
 
-const SUIT_SYMBOL = {
-  s: "♠",
-  h: "♥",
-  d: "♦",
-  c: "♣",
-};
+const SUIT_SYMBOL = { s: "♠", h: "♥", d: "♦", c: "♣" };
+const SUIT_NAME = { s: "Spades", h: "Hearts", d: "Diamonds", c: "Clubs" };
 
-function Card({ card, playable, onClick }) {
+function CardFace({ card, mode, onClick, size }) {
+  const m = mode || "played";
+  const sz = size || "md";
   const red = card.s === "h" || card.s === "d";
-
+  const isTen = card.v === "10";
+  const clickable = m === "playable";
+  const klass =
+    "card-face size-" + sz + " mode-" + m +
+    (red ? " red" : " black") + (isTen ? " is-ten" : "");
   return (
     <button
-      className={`card ${red ? "red" : "black"} ${playable ? "playable" : "disabled"}`}
-      onClick={onClick}
-      disabled={!playable}
+      type="button"
+      className={klass}
+      onClick={clickable ? onClick : undefined}
+      disabled={!clickable}
+      aria-label={card.v + " of " + SUIT_NAME[card.s]}
     >
-      <span className="card-value">{card.v}</span>
-      <span className="card-suit">{SUIT_SYMBOL[card.s]}</span>
+      <span className="rank top">{card.v}</span>
+      <span className="suit middle">{SUIT_SYMBOL[card.s]}</span>
+      <span className="rank bottom">{card.v}</span>
     </button>
+  );
+}
+
+function CardBackStack({ count }) {
+  const shown = Math.min(count, 5);
+  const backs = [];
+  for (let i = 0; i < shown; i++) {
+    backs.push(
+      <div
+        key={i}
+        className="card-back"
+        style={{ transform: "translateX(" + (i * 4) + "px)", zIndex: i }}
+      />
+    );
+  }
+  return (
+    <div className="card-back-stack" title={count + " cards"}>
+      {backs}
+      <span className="hand-count">{count}</span>
+    </div>
   );
 }
 
@@ -33,9 +58,7 @@ export default function RoomPage() {
   const [toast, setToast] = useState("");
   const [pendingTrumpCard, setPendingTrumpCard] = useState(null);
 
-  // refs so callbacks always see latest values
   const stateRef = useRef(null);
-  const joinedRef = useRef(false);
   const code = (roomCode || "").toUpperCase();
   const playerName = localStorage.getItem("playerName");
 
@@ -53,56 +76,29 @@ export default function RoomPage() {
       return;
     }
 
-    const tokenKey = `token:${code}`;
+    const tokenKey = "token:" + code;
 
     const attemptJoin = () => {
       const token = localStorage.getItem(tokenKey) || null;
-      // Try reconnect first (token-based, falls back to legacy name match
-      // on the server only if no token exists for that seat).
-      socket.emit("reconnectPlayer", {
-        roomCode: code,
-        name: playerName,
-        token,
-      });
+      socket.emit("reconnectPlayer", { roomCode: code, name: playerName, token });
     };
 
-    const handleState = (newState) => {
-      joinedRef.current = true;
-      setState(newState);
+    const handleState = (s) => {
+      setState(s);
       setError("");
     };
-
-    const handleError = (msg) => {
+    const handleError = (msg) =>
       setError(typeof msg === "string" ? msg : "Server error.");
-    };
-
-    const handleSession = ({ roomCode: rc, token }) => {
-      if (rc && token) {
-        localStorage.setItem(`token:${rc}`, token);
+    const handleSession = (data) => {
+      if (data && data.roomCode && data.token) {
+        localStorage.setItem("token:" + data.roomCode, data.token);
       }
     };
-
-    const handleReconnectFailed = () => {
-      // No prior seat — try joining as a new player.
-      socket.emit("joinRoom", {
-        roomCode: code,
-        name: playerName,
-      });
-    };
-
-    const handleNeedTrump = ({ cardId }) => {
-      setPendingTrumpCard(cardId);
-    };
-
-    const handleConnect = () => {
-      // Whenever the socket connects (initial or after a drop), try to
-      // (re)claim our seat.
-      attemptJoin();
-    };
-
-    const handleDisconnect = () => {
-      setToast("Disconnected — reconnecting...");
-    };
+    const handleReconnectFailed = () =>
+      socket.emit("joinRoom", { roomCode: code, name: playerName });
+    const handleNeedTrump = (data) => setPendingTrumpCard(data.cardId);
+    const handleConnect = () => attemptJoin();
+    const handleDisconnect = () => setToast("Disconnected - reconnecting...");
 
     socket.on("state", handleState);
     socket.on("errorMessage", handleError);
@@ -112,26 +108,16 @@ export default function RoomPage() {
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
 
-    if (socket.connected) {
-      attemptJoin();
-    }
+    if (socket.connected) attemptJoin();
 
-    // Fallback: if we still have no state after 700ms, try joinRoom too.
     const fallback = setTimeout(() => {
       if (!stateRef.current) {
-        socket.emit("joinRoom", {
-          roomCode: code,
-          name: playerName,
-        });
+        socket.emit("joinRoom", { roomCode: code, name: playerName });
       }
     }, 700);
 
-    // Clear the disconnect toast when state arrives
-    const clearToast = setTimeout(() => setToast(""), 0);
-
     return () => {
       clearTimeout(fallback);
-      clearTimeout(clearToast);
       socket.off("state", handleState);
       socket.off("errorMessage", handleError);
       socket.off("session", handleSession);
@@ -142,16 +128,33 @@ export default function RoomPage() {
     };
   }, [code, playerName, navigate]);
 
-  // hide toast when state arrives after a reconnect
   useEffect(() => {
-    if (state && toast) setToast("");
+    if (state && toast.indexOf("Disconnected") === 0) setToast("");
   }, [state, toast]);
 
+  const myTeam = state ? state.myIndex % 2 : 0;
   const myTurn = state && state.currentPlayer === state.myIndex;
   const currentPlayer = useMemo(() => {
     if (!state) return null;
     return state.players.find((p) => p.index === state.currentPlayer);
   }, [state]);
+
+  const seatSlots4 = ["bottom", "left", "top", "right"];
+  const seatSlots6 = [
+    "bottom",
+    "bottom-left",
+    "top-left",
+    "top",
+    "top-right",
+    "bottom-right",
+  ];
+  const seatFor = (idx) => {
+    if (!state) return "bottom";
+    const slots = state.playerCount === 6 ? seatSlots6 : seatSlots4;
+    const rel = (idx - state.myIndex + state.playerCount) % state.playerCount;
+    return slots[rel];
+  };
+  const isAlly = (idx) => state && idx % 2 === myTeam;
 
   const copyInvite = async () => {
     const text = window.location.href;
@@ -159,7 +162,6 @@ export default function RoomPage() {
       if (navigator.clipboard && window.isSecureContext) {
         await navigator.clipboard.writeText(text);
       } else {
-        // Fallback for non-secure contexts
         const ta = document.createElement("textarea");
         ta.value = text;
         ta.style.position = "fixed";
@@ -171,28 +173,24 @@ export default function RoomPage() {
       }
       setToast("Room link copied.");
       setTimeout(() => setToast(""), 1800);
-    } catch {
-      setToast("Couldn't copy automatically — copy the URL from the address bar.");
+    } catch (e) {
+      setToast("Couldn't copy - copy the URL from the address bar.");
       setTimeout(() => setToast(""), 2500);
     }
   };
 
   const startGame = () => socket.emit("startGame", { roomCode: code });
   const nextRound = () => socket.emit("nextRound", { roomCode: code });
-
   const leaveRoom = () => {
     socket.emit("leaveRoom");
     navigate("/");
   };
-
-  const playCard = (card) => {
+  const playCard = (card) =>
     socket.emit("playCard", {
       roomCode: code,
       cardId: card.id,
       selectedTrump: null,
     });
-  };
-
   const chooseTrump = (suit) => {
     if (!pendingTrumpCard) return;
     socket.emit("playCard", {
@@ -209,7 +207,7 @@ export default function RoomPage() {
         <div className="loading-card">
           <h2>Connecting to room...</h2>
           <p>Room: {code}</p>
-          {error && <div className="error-box">{error}</div>}
+          {error ? <div className="error-box">{error}</div> : null}
           <button
             className="secondary-btn"
             style={{ marginTop: 16 }}
@@ -222,153 +220,206 @@ export default function RoomPage() {
     );
   }
 
-  const statusLabel =
-    state.status === "waiting"
-      ? `Waiting for players ${state.players.length}/${state.playerCount}`
-      : state.status === "roundOver"
-      ? "Round Over"
-      : state.status === "gameOver"
-      ? `Game Over — Team ${(state.winningTeam ?? 0) + 1} wins!`
-      : myTurn
-      ? "Your Turn"
-      : `${currentPlayer?.name || "Player"}'s Turn`;
+  const trumpRed = state.trump === "h" || state.trump === "d";
+
+  let centerText;
+  if (state.status === "waiting") {
+    centerText =
+      "Waiting for players (" +
+      state.players.length +
+      "/" +
+      state.playerCount +
+      ")";
+  } else if (state.status === "roundOver") {
+    centerText = "Round Over";
+  } else if (state.status === "gameOver") {
+    centerText = "Team " + ((state.winningTeam || 0) + 1) + " wins the match!";
+  } else if (myTurn) {
+    centerText = "Your turn";
+  } else {
+    centerText = (currentPlayer ? currentPlayer.name : "...") + " is playing";
+  }
+
+  const seats = [];
+  for (let i = 0; i < state.players.length; i++) {
+    const p = state.players[i];
+    const slot = seatFor(p.index);
+    const ally = isAlly(p.index);
+    const me = p.index === state.myIndex;
+    const active =
+      state.currentPlayer === p.index && state.status === "playing";
+    const played = state.trick.find((t) => t.playerIndex === p.index);
+
+    const seatClass =
+      "seat seat-" + slot +
+      (ally ? " ally" : " opp") +
+      (me ? " me" : "") +
+      (active ? " active" : "") +
+      (p.connected ? " online" : " offline");
+
+    seats.push(
+      <Fragment key={p.index}>
+        <div className={seatClass}>
+          <div className="seat-head">
+            <div className="avatar">{p.isBot ? "🤖" : "👤"}</div>
+            <div className="seat-id">
+              <div className="seat-name">{me ? p.name + " (You)" : p.name}</div>
+              <div className="seat-tags">
+                {me ? (
+                  <span className="tag you">You</span>
+                ) : ally ? (
+                  <span className="tag partner">Partner</span>
+                ) : (
+                  <span className="tag opp">Opponent</span>
+                )}
+                {p.isBot ? <span className="tag bot">Bot</span> : null}
+                {!p.connected ? <span className="tag off">Offline</span> : null}
+              </div>
+            </div>
+          </div>
+          <div className="seat-body">
+            <CardBackStack count={(state.handCounts || [])[p.index] || 0} />
+          </div>
+        </div>
+
+        {played ? (
+          <div className={"played played-" + slot}>
+            <CardFace card={played.card} mode="played" size="md" />
+          </div>
+        ) : null}
+      </Fragment>
+    );
+  }
 
   return (
     <div className="game-page">
-      <div className="top-bar">
-        <div>
-          <h2>Room: {state.roomCode}</h2>
-          <p>{state.message}</p>
+      <header className="top-bar">
+        <div className="room-info">
+          <h2>
+            Room <span className="room-code">{state.roomCode}</span>
+          </h2>
+          <p className="msg">{state.message}</p>
         </div>
-
         <div className="top-actions">
-          <button onClick={copyInvite}>Copy Invite Link</button>
+          <button onClick={copyInvite}>Copy Link</button>
           <button onClick={leaveRoom}>Leave</button>
         </div>
+      </header>
+
+      {error ? <div className="error-box">{error}</div> : null}
+      {toast ? <div className="toast">{toast}</div> : null}
+
+      <div className="scoreboard">
+        <div className={"team-card " + (myTeam === 0 ? "mine" : "theirs")}>
+          <div className="team-label">
+            Team 1 {myTeam === 0 ? "· You" : ""}
+          </div>
+          <div className="team-score">{state.scores ? state.scores[0] : 0}</div>
+          <div className="team-meta">
+            <span>Tricks {state.tricksWon ? state.tricksWon[0] : 0}</span>
+            <span>10s {state.tensWon ? state.tensWon[0] : 0}/4</span>
+          </div>
+        </div>
+
+        <div className="trump-card">
+          <div className="trump-label">Trump</div>
+          <div className={"trump-suit " + (trumpRed ? "red" : "")}>
+            {state.trump ? SUIT_SYMBOL[state.trump] : "—"}
+          </div>
+          <div className="target">First to {state.targetScore || 7}</div>
+        </div>
+
+        <div className={"team-card " + (myTeam === 1 ? "mine" : "theirs")}>
+          <div className="team-label">
+            Team 2 {myTeam === 1 ? "· You" : ""}
+          </div>
+          <div className="team-score">{state.scores ? state.scores[1] : 0}</div>
+          <div className="team-meta">
+            <span>Tricks {state.tricksWon ? state.tricksWon[1] : 0}</span>
+            <span>10s {state.tensWon ? state.tensWon[1] : 0}/4</span>
+          </div>
+        </div>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
-      {toast && <div className="toast">{toast}</div>}
+      <div className="table-wrap">
+        <div className={"felt seats-" + state.playerCount}>
+          {seats}
 
-      <div className="score-board">
-        <div>
-          <span>Team 1</span>
-          <strong>{state.scores?.[0] || 0}</strong>
-          <small>Tricks: {state.tricksWon?.[0] || 0}</small>
-          <small>10s: {state.tensWon?.[0] || 0}</small>
-        </div>
-
-        <div>
-          <span>Trump</span>
-          <strong>{state.trump ? SUIT_SYMBOL[state.trump] : "Hidden"}</strong>
-          <small>First to {state.targetScore ?? 7}</small>
-        </div>
-
-        <div>
-          <span>Team 2</span>
-          <strong>{state.scores?.[1] || 0}</strong>
-          <small>Tricks: {state.tricksWon?.[1] || 0}</small>
-          <small>10s: {state.tensWon?.[1] || 0}</small>
-        </div>
-      </div>
-
-      <div className="table-area">
-        <div className="players-grid">
-          {state.players.map((p) => (
-            <div
-              key={p.index}
-              className={`player-pill ${
-                state.currentPlayer === p.index && state.status === "playing"
-                  ? "active-turn"
-                  : ""
-              } ${p.index === state.myIndex ? "me" : ""}`}
-            >
-              <div className="avatar">{p.isBot ? "🤖" : "👤"}</div>
-              <div>
-                <strong>
-                  {p.name}
-                  {p.index === state.myIndex ? " (You)" : ""}
-                </strong>
-                <span>
-                  {p.connected ? "Online" : "Offline"} · Cards{" "}
-                  {state.handCounts?.[p.index] ?? 0}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <div className="center-table">
-          <div className="turn-label">{statusLabel}</div>
-
-          <div className="trick-zone">
-            {state.trick.length === 0 ? (
-              <div className="empty-trick">No cards played yet</div>
-            ) : (
-              state.trick.map((t) => (
-                <div
-                  key={`${t.playerIndex}-${t.card.id}`}
-                  className="played-card-wrap"
-                >
-                  <Card card={t.card} playable={false} onClick={() => {}} />
-                  <span>{t.playerName}</span>
-                </div>
-              ))
-            )}
+          <div className="table-center">
+            <div className="status-pill">{centerText}</div>
+            {state.status === "playing" && state.trick.length === 0 ? (
+              <div className="hint">Lead a card from your hand</div>
+            ) : null}
           </div>
         </div>
       </div>
 
       <div className="bottom-panel">
-        {state.isHost && state.status === "waiting" && (
-          <button className="start-btn" onClick={startGame}>
-            Start Game
-          </button>
-        )}
+        <div className="host-actions">
+          {state.isHost && state.status === "waiting" ? (
+            <button className="start-btn" onClick={startGame}>
+              Start Game
+            </button>
+          ) : null}
+          {state.isHost && state.status === "roundOver" ? (
+            <button className="start-btn" onClick={nextRound}>
+              Next Round
+            </button>
+          ) : null}
+          {state.isHost && state.status === "gameOver" ? (
+            <button className="start-btn" onClick={nextRound}>
+              Play Again
+            </button>
+          ) : null}
+        </div>
 
-        {state.isHost && state.status === "roundOver" && (
-          <button className="start-btn" onClick={nextRound}>
-            Next Round
-          </button>
-        )}
+        <h3 className="hand-title">
+          Your Hand - {state.myHand.length} cards
+          {myTurn && state.status === "playing" ? (
+            <span className="your-turn"> - Your Turn</span>
+          ) : null}
+        </h3>
 
-        {state.isHost && state.status === "gameOver" && (
-          <button className="start-btn" onClick={nextRound}>
-            Play Again
-          </button>
-        )}
-
-        <h3>Your Cards</h3>
-
-        <div className="hand">
-          {state.myHand.map((card) => {
-            const playable = state.playableCardIds?.includes(card.id);
-            return (
-              <Card
-                key={card.id}
-                card={card}
-                playable={playable}
-                onClick={() => playCard(card)}
-              />
-            );
-          })}
+        <div className="my-hand">
+          {state.myHand.length === 0 ? (
+            <div className="empty-hand">No cards yet - waiting for the deal.</div>
+          ) : (
+            state.myHand.map((card) => {
+              const playable =
+                (state.playableCardIds || []).indexOf(card.id) !== -1;
+              return (
+                <CardFace
+                  key={card.id}
+                  card={card}
+                  mode={playable ? "playable" : "hand"}
+                  size="lg"
+                  onClick={() => playCard(card)}
+                />
+              );
+            })
+          )}
         </div>
       </div>
 
-      {pendingTrumpCard && (
+      {pendingTrumpCard ? (
         <div className="modal-backdrop">
           <div className="trump-modal">
             <h2>Choose Trump</h2>
-            <p>You cannot follow suit. Select a trump suit.</p>
-
+            <p>You can't follow suit. Pick a trump suit to declare.</p>
             <div className="trump-options">
-              {["s", "h", "d", "c"].map((suit) => (
-                <button key={suit} onClick={() => chooseTrump(suit)}>
-                  {SUIT_SYMBOL[suit]}
-                </button>
-              ))}
+              {["s", "h", "d", "c"].map((suit) => {
+                const red = suit === "h" || suit === "d";
+                return (
+                  <button
+                    key={suit}
+                    className={red ? "red" : "black"}
+                    onClick={() => chooseTrump(suit)}
+                  >
+                    {SUIT_SYMBOL[suit]}
+                  </button>
+                );
+              })}
             </div>
-
             <button
               className="cancel-btn"
               onClick={() => setPendingTrumpCard(null)}
@@ -377,7 +428,7 @@ export default function RoomPage() {
             </button>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
