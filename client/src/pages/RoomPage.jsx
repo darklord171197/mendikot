@@ -57,6 +57,7 @@ export default function RoomPage() {
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
   const [pendingTrumpCard, setPendingTrumpCard] = useState(null);
+  const [selectedPartner, setSelectedPartner] = useState(null);
 
   const stateRef = useRef(null);
   const code = (roomCode || "").toUpperCase();
@@ -340,6 +341,32 @@ export default function RoomPage() {
           </div>
         </div>
       </div>
+
+      {state.status === "waiting" && state.players.length > 1 && (
+        <div className="partner-selection">
+          <h3>Select Your Partner</h3>
+          <p className="partner-subtitle">
+            {selectedPartner !== null
+              ? `You selected ${state.players.find((p) => p.index === selectedPartner)?.name} as your partner`
+              : "Choose a teammate before the game starts"}
+          </p>
+          <div className="partner-options">
+            {state.players.map((p) =>
+              p.index === state.myIndex ? null : (
+                <button
+                  key={p.index}
+                  className={`partner-btn ${selectedPartner === p.index ? "selected" : ""}`}
+                  onClick={() => setSelectedPartner(p.index)}
+                >
+                  <div className="partner-avatar">{p.isBot ? "🤖" : "👤"}</div>
+                  <div className="partner-name">{p.name}</div>
+                  {p.isBot ? <div className="partner-badge">Bot</div> : null}
+                </button>
+              )
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="table-wrap">
         <div className={"felt seats-" + state.playerCount}>
