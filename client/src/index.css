@@ -1268,6 +1268,50 @@ button {
 /* RESPONSIVE                                                 */
 /* ========================================================== */
 
+/* ========================================================== */
+/* DESKTOP COMPACT — everything visible in one viewport       */
+/* ========================================================== */
+
+@media (min-width: 901px) {
+  /* Lock the page to viewport height — no scrolling */
+  .game-page {
+    height: 100vh;
+    overflow: hidden;
+    padding: 8px;
+    gap: 8px;
+  }
+
+  /* Slimmer top bar */
+  .top-bar { padding: 8px 16px; }
+  .top-bar h2 { font-size: 15px; margin: 0 0 2px; }
+  .top-bar .msg { font-size: 12px; }
+  .top-actions button { padding: 7px 12px; font-size: 12px; }
+  .mute-btn { padding: 7px 10px; }
+
+  /* Tighter scoreboard */
+  .scoreboard { gap: 8px; }
+  .team-card, .trump-card { padding: 8px 12px; border-radius: 14px; }
+  .team-score { font-size: 26px; margin-bottom: 2px; }
+  .trump-suit { font-size: 32px; }
+  .trump-label, .target { font-size: 10px; }
+
+  /* Table fills remaining space */
+  .table-wrap { flex: 1; min-height: 0; padding: 4px 20px; }
+
+  /* Cap the felt so it never pushes below the hand panel */
+  .felt { max-height: 50vh; }
+
+  /* Tighter bottom panel */
+  .bottom-panel { flex-shrink: 0; padding: 8px 14px; gap: 5px; }
+  .hand-title { font-size: 12px; margin: 0; }
+  .my-hand { padding: 5px 4px 2px; gap: 5px; }
+
+  /* Slightly smaller hand cards on desktop so 13 fit in one row */
+  .card-face.size-lg { width: 70px; height: 100px; padding: 5px 7px; }
+  .card-face.size-lg .rank { font-size: 17px; }
+  .card-face.size-lg .suit { font-size: 30px; }
+}
+
 @media (max-width: 900px) {
   .scoreboard { grid-template-columns: 1fr auto 1fr; }
   .trump-card { min-width: 100px; }
