@@ -58,8 +58,9 @@ function noise(ac, vol, start, dur) {
 export function cardPlay() {
   play((ac) => {
     const t = ac.currentTime;
-    beep(ac, 900, "square", 0.1,  t,       0.005, 0,    0.05);
-    beep(ac, 280, "sine",   0.07, t + 0.01, 0.005, 0,    0.06);
+    // Soft thud — sine only, low volume, short decay
+    beep(ac, 420, "sine", 0.045, t,       0.004, 0, 0.07);
+    beep(ac, 210, "sine", 0.03,  t + 0.01, 0.003, 0, 0.06);
   });
 }
 
