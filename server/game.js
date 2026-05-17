@@ -320,7 +320,8 @@ function playCardCore(r, pi, cardId) {
   const cannotFollow = r.trick.length > 0 && !canFollowLedSuit(r, pi);
   let trumpJustSet = null;
   if (!r.trump && cannotFollow) {
-    r.trump = card.s;
+    r.trump     = card.s;
+    r.trumpTeam = teamOf(pi);   // remember which team declared trump for tie-breaking
     trumpJustSet = card.s;
     r.message = r.players[pi].name + " declared trump: " + SYM[card.s];
   }
@@ -352,22 +353,21 @@ function startGame(r, intensity) {
   if (r.players.some((p) => !p.connected && !p.isBot)) {
     r.message = "All players must be connected."; return;
   }
-  // Reset match-level stats on new game
-  if (r.winningTeam !== null) {
-    r.scores = [0, 0]; r.winningTeam = null;
-    r.mendikotCount = [0, 0]; r.bawanyaCount = [0, 0]; r.normalWins = [0, 0];
-  }
-  if (!r.mendikotCount)  r.mendikotCount = [0, 0];
-  if (!r.bawanyaCount)   r.bawanyaCount  = [0, 0];
-  if (!r.normalWins)     r.normalWins    = [0, 0];
+  // Scores and win counters persist for the lifetime of the room — never reset here
+  if (!r.scores)        r.scores       = [0, 0];
+  if (!r.mendikotCount) r.mendikotCount = [0, 0];
+  if (!r.bawanyaCount)  r.bawanyaCount  = [0, 0];
+  if (!r.normalWins)    r.normalWins    = [0, 0];
 
-  r.status = "playing";
-  r.trump  = null;
-  r.trick  = [];
+  r.status     = "playing";
+  r.trump      = null;
+  r.trumpTeam  = null;          // which team declared trump this round
+  r.winningTeam = null;         // clear last-match winner; scores are NOT reset
+  r.trick      = [];
   r.tricksWon  = [0, 0];
   r.tensWon    = [0, 0];
   r.capturedTens   = [[], []];
-  r.voids = Array.from({ length: r.playerCount }, () => ({}));
+  r.voids      = Array.from({ length: r.playerCount }, () => ({}));
   r.lastRoundResult = null;
 
   const eff = (intensity != null) ? Math.max(1, Math.min(100, intensity)) : 85;
@@ -385,28 +385,17 @@ function startGame(r, intensity) {
 
 // ─── End round ────────────────────────────────────────────────
 
-function computeNextDealer(r, winner, mendikot, bawanya) {
-  const losingTeam   = 1 - winner;
-  const dealerTeam   = r.dealer % 2;
-  const n            = r.playerCount;
-
-  if (dealerTeam === losingTeam) {
-    // Dealer is already on the losing team
-    if (mendikot || bawanya) {
-      // Shame passes to next player on same team
-      return (r.dealer + 2) % n;
-    }
-    return r.dealer; // Normal loss: same shuffler
-  } else {
-    // Dealer's team won — hand shuffling to the losing team
-    // The losing-team player who led the previous round becomes new shuffler
-    const prevLeader = r.roundFirstLeader != null
+function computeNextDealer(r, winner) {
+  // Shuffler only rotates when the shuffling team wins.
+  // If they lose, the same person shuffles again next round.
+  if (teamOf(r.dealer) === winner) {
+    // Dealer's team won → hand shuffling to the losing team.
+    // Use the player who led first this round (always on the losing team).
+    return r.roundFirstLeader != null
       ? r.roundFirstLeader
-      : (r.dealer + 1) % n;
-    // prevLeader is always on the opposite team from dealer
-    // so prevLeader % 2 === losingTeam already
-    return prevLeader;
+      : (r.dealer + 1) % r.playerCount;
   }
+  return r.dealer; // Dealer's team lost → same shuffler stays
 }
 
 function endRound(r) {
@@ -422,7 +411,17 @@ function endRound(r) {
   else if (t1 === 4) { winner = 1; mendikot = true; }
   else if (t0 > t1)  winner = 0;
   else if (t1 > t0)  winner = 1;
-  else winner = tr0 >= tr1 ? 0 : 1;
+  else {
+    // 2-2 tie on tens: the trump-declaring team must win MORE tricks to take the point.
+    // If they don't (equal or fewer tricks), the OTHER team wins.
+    const tt = r.trumpTeam;
+    if (tt !== null && tt !== undefined) {
+      winner = r.tricksWon[tt] > r.tricksWon[1 - tt] ? tt : 1 - tt;
+    } else {
+      // No trump declared — fall back to trick count (4p can't tie tricks)
+      winner = tr0 >= tr1 ? 0 : 1;
+    }
+  }
 
   const pts = bawanya ? 10 : mendikot ? 5 : 1;
   r.scores[winner] += pts;
@@ -444,7 +443,7 @@ function endRound(r) {
     r.status = "roundOver";
   }
 
-  const nextDealer = computeNextDealer(r, winner, mendikot, bawanya);
+  const nextDealer = computeNextDealer(r, winner);
 
   r.lastRoundResult = {
     id: Date.now(), winner, mendikot, bawanya, points: pts,
