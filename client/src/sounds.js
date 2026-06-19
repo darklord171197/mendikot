@@ -1,6 +1,15 @@
+import { Haptics, ImpactStyle, NotificationType } from "@capacitor/haptics";
+
 let ctx = null;
 let muted = false;
 const listeners = new Set();
+
+function vibrate(fn) {
+  if (muted) return;
+  fn().catch(() => {});
+}
+const impact = (style) => vibrate(() => Haptics.impact({ style }));
+const notify = (type) => vibrate(() => Haptics.notification({ type }));
 
 function getCtx() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -62,6 +71,7 @@ export function cardPlay() {
     beep(ac, 420, "sine", 0.045, t,       0.004, 0, 0.07);
     beep(ac, 210, "sine", 0.03,  t + 0.01, 0.003, 0, 0.06);
   });
+  impact(ImpactStyle.Light);
 }
 
 export function deal() {
@@ -86,6 +96,7 @@ export function trickWin() {
       beep(ac, f, "sine", 0.14, t + i * 0.09, 0.02, 0.04, 0.2)
     );
   });
+  impact(ImpactStyle.Medium);
 }
 
 export function tenCapture() {
@@ -95,6 +106,7 @@ export function tenCapture() {
       beep(ac, f, "triangle", 0.16, t + i * 0.05, 0.01, 0.02, 0.32)
     );
   });
+  impact(ImpactStyle.Medium);
 }
 
 export function mendikot() {
@@ -104,6 +116,7 @@ export function mendikot() {
       beep(ac, f, "sawtooth", 0.11, t + i * 0.12, 0.03, 0.07, 0.38)
     );
   });
+  notify(NotificationType.Success);
 }
 
 export function bawanya() {
@@ -116,6 +129,7 @@ export function bawanya() {
       beep(ac, f, "sine", 0.12, t + 0.85, 0.06, 0.2, 0.7)
     );
   });
+  notify(NotificationType.Success);
 }
 
 export function roundEnd() {
@@ -125,6 +139,7 @@ export function roundEnd() {
       beep(ac, f, "sine", 0.11, t + i * 0.15, 0.04, 0.07, 0.42)
     );
   });
+  impact(ImpactStyle.Light);
 }
 
 export function gameWin() {
@@ -134,6 +149,7 @@ export function gameWin() {
       beep(ac, f, "triangle", 0.15, t + [0, 0.15, 0.3, 0.45, 0.6, 0.75][i], 0.04, 0.1, 0.32)
     );
   });
+  notify(NotificationType.Success);
 }
 
 export function gameLoss() {
@@ -143,4 +159,5 @@ export function gameLoss() {
       beep(ac, f, "sine", 0.12, t + i * 0.18, 0.04, 0.1, 0.48)
     );
   });
+  notify(NotificationType.Error);
 }

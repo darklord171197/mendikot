@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import { socket } from "../socket";
 import * as sounds from "../sounds";
 import { isMuted, toggleMute, onMuteChange } from "../sounds";
+import { getAvatar } from "../avatars";
+import { recordRoundResult, recordGameResult } from "../stats";
 
 const SUIT_SYMBOL = { s: "♠", h: "♥", d: "♦", c: "♣" };
 const SUIT_NAME   = { s: "Spades", h: "Hearts", d: "Diamonds", c: "Clubs" };
@@ -177,9 +179,10 @@ export default function RoomPage() {
     if (!/^[A-Z0-9]{5}$/.test(code)) { navigate("/"); return; }
 
     const tokenKey = "token:" + code;
+    const avatar = getAvatar();
     const attemptJoin = () => {
       const token = localStorage.getItem(tokenKey) || null;
-      socket.emit("reconnectPlayer", { roomCode: code, name: playerName, token });
+      socket.emit("reconnectPlayer", { roomCode: code, name: playerName, token, avatar });
     };
 
     const handleState = (s) => {
@@ -196,7 +199,7 @@ export default function RoomPage() {
     const handleSession  = (data) => {
       if (data?.roomCode && data?.token) localStorage.setItem("token:" + data.roomCode, data.token);
     };
-    const handleReconnectFailed = () => socket.emit("joinRoom", { roomCode: code, name: playerName });
+    const handleReconnectFailed = () => socket.emit("joinRoom", { roomCode: code, name: playerName, avatar });
     const handleNeedTrump = (data) => setPendingTrumpCard(data.cardId);
     const handleConnect  = () => attemptJoin();
     const handleDisconnect = () => setToast("Disconnected — reconnecting...");
@@ -212,7 +215,7 @@ export default function RoomPage() {
     if (socket.connected) attemptJoin();
 
     const fallback = setTimeout(() => {
-      if (!stateRef.current) socket.emit("joinRoom", { roomCode: code, name: playerName });
+      if (!stateRef.current) socket.emit("joinRoom", { roomCode: code, name: playerName, avatar });
     }, 700);
 
     return () => {
@@ -271,10 +274,29 @@ export default function RoomPage() {
       if (r?.bawanya)   sounds.bawanya();
       else if (r?.mendikot) sounds.mendikot();
       else sounds.roundEnd();
+
+      if (r) {
+        const { newlyUnlocked } = recordRoundResult({
+          mendikot: !!r.mendikot,
+          bawanya: !!r.bawanya,
+          won: r.winner === myTeamNow,
+        });
+        if (newlyUnlocked.length) {
+          setToast("🏅 Badge unlocked: " + newlyUnlocked.map((b) => b.label).join(", "));
+          setTimeout(() => setToast(""), 3000);
+        }
+      }
     }
 
     // Game over
     if (state.status === "gameOver" && prev.status !== "gameOver") {
+      const { newlyUnlocked } = recordGameResult({ won: state.winningTeam === myTeamNow });
+      if (newlyUnlocked.length) {
+        setTimeout(() => {
+          setToast("🏅 Badge unlocked: " + newlyUnlocked.map((b) => b.label).join(", "));
+          setTimeout(() => setToast(""), 3000);
+        }, 1500);
+      }
       setTimeout(() => {
         if (state.winningTeam === myTeamNow) sounds.gameWin();
         else sounds.gameLoss();
@@ -382,7 +404,7 @@ export default function RoomPage() {
             </button>
           )}
           <div className="seat-head">
-            <div className="avatar">{p.isBot ? "🤖" : "👤"}</div>
+            <div className="avatar">{p.isBot ? "🤖" : (p.avatar || "👤")}</div>
             <div className="seat-id">
               <div className="seat-name">{me ? p.name + " (You)" : p.name}</div>
               <div className="seat-tags">

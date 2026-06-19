@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { socket } from "../socket";
+import { AVATAR_OPTIONS, getAvatar, setAvatar } from "../avatars";
 
 export default function HomePage() {
   const [name, setName]       = useState(localStorage.getItem("playerName") || "");
@@ -9,7 +10,13 @@ export default function HomePage() {
   const [difficulty, setDifficulty] = useState("pro");
   const [error, setError]     = useState("");
   const [busy, setBusy]       = useState(false);
+  const [avatar, setAvatarState] = useState(getAvatar());
   const navigate = useNavigate();
+
+  const pickAvatar = (emoji) => {
+    setAvatar(emoji);
+    setAvatarState(emoji);
+  };
 
   useEffect(() => {
     const handleSession = ({ roomCode, token }) => {
@@ -65,7 +72,7 @@ export default function HomePage() {
 
     socket.on("state", onState);
     socket.on("errorMessage", onError);
-    socket.emit(event, { name: safeName, mode, ...extra });
+    socket.emit(event, { name: safeName, mode, avatar, ...extra });
   };
 
   const createRoom    = () => launch("createRoom");
@@ -89,6 +96,15 @@ export default function HomePage() {
         <h1>Mendikot</h1>
         <p className="subtitle">Play with friends or bots</p>
 
+        <button
+          type="button"
+          className="home-profile-btn"
+          onClick={() => navigate("/profile")}
+          title="Profile, avatar and badges"
+        >
+          {avatar} Profile
+        </button>
+
         <input
           className="input"
           placeholder="Enter your name"
@@ -96,6 +112,19 @@ export default function HomePage() {
           maxLength={20}
           onChange={(e) => setName(e.target.value)}
         />
+
+        <div className="avatar-picker avatar-picker-compact">
+          {AVATAR_OPTIONS.slice(0, 10).map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              className={"avatar-option" + (emoji === avatar ? " avatar-selected" : "")}
+              onClick={() => pickAvatar(emoji)}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
 
         <div className="mode-buttons">
           <button className={mode === "4p" ? "mode active" : "mode"} onClick={() => setMode("4p")} type="button">

@@ -1651,3 +1651,93 @@ button {
 
 .join-box .input { margin-bottom: 0; }
 .join-box .secondary-btn { width: auto; white-space: nowrap; }
+
+/* ========================================================== */
+/* PROFILE / AVATAR / STATS / BADGES                           */
+/* ========================================================== */
+
+.home-profile-btn {
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  color: white;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.avatar-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 10px 0 16px;
+}
+
+.avatar-picker-compact { margin-bottom: 18px; }
+
+.avatar-option {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+.avatar-option:hover { border-color: var(--accent); }
+.avatar-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.35);
+  background: #14532d;
+}
+
+.profile-card { max-width: 460px; }
+.profile-back-btn { width: auto; margin-bottom: 14px; }
+.profile-avatar-display {
+  font-size: 64px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+.stat-box {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 8px;
+  text-align: center;
+}
+.stat-value { font-size: 24px; font-weight: 800; color: var(--accent); }
+.stat-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+.badges-title { margin: 18px 0 8px; font-size: 16px; }
+.badges-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.badge-box {
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 6px;
+  text-align: center;
+}
+.badge-icon { font-size: 26px; }
+.badge-label { font-size: 10px; margin-top: 4px; color: var(--muted); }
+.badge-unlocked { border-color: var(--accent); background: #14532d; }
+.badge-unlocked .badge-label { color: white; }
+.badge-locked { opacity: 0.45; }

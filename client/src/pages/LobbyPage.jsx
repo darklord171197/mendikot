@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { socket } from "../socket";
+import { getAvatar } from "../avatars";
 
 export default function LobbyPage() {
   const { roomCode } = useParams();
@@ -19,10 +20,11 @@ export default function LobbyPage() {
     if (!/^[A-Z0-9]{5}$/.test(code)) { navigate("/"); return; }
 
     const tokenKey = "token:" + code;
+    const avatar = getAvatar();
 
     const attemptJoin = () => {
       const token = localStorage.getItem(tokenKey) || null;
-      socket.emit("reconnectPlayer", { roomCode: code, name: playerName, token });
+      socket.emit("reconnectPlayer", { roomCode: code, name: playerName, token, avatar });
     };
 
     const handleState = (s) => {
@@ -34,7 +36,7 @@ export default function LobbyPage() {
     const handleSession = (data) => {
       if (data?.roomCode && data?.token) localStorage.setItem("token:" + data.roomCode, data.token);
     };
-    const handleReconnectFailed = () => socket.emit("joinRoom", { roomCode: code, name: playerName });
+    const handleReconnectFailed = () => socket.emit("joinRoom", { roomCode: code, name: playerName, avatar });
     const handleConnect = () => attemptJoin();
     const handleDisconnect = () => setToast("Disconnected — reconnecting...");
 
@@ -48,7 +50,7 @@ export default function LobbyPage() {
     if (socket.connected) attemptJoin();
 
     const fallback = setTimeout(() => {
-      if (!stateRef.current) socket.emit("joinRoom", { roomCode: code, name: playerName });
+      if (!stateRef.current) socket.emit("joinRoom", { roomCode: code, name: playerName, avatar });
     }, 700);
 
     return () => {
@@ -142,7 +144,7 @@ export default function LobbyPage() {
         </div>
 
         <div className="lpc-body">
-          <div className="lpc-avatar">{player.isBot ? "🤖" : "👤"}</div>
+          <div className="lpc-avatar">{player.isBot ? "🤖" : (player.avatar || "👤")}</div>
           <div className="lpc-info">
             <span className="lpc-name">
               {player.name}
