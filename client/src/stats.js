@@ -48,17 +48,10 @@ export function recordRoundResult({ mendikot, bawanya, won }) {
   const before = getStats();
   const stats = { ...before };
   stats.roundsPlayed += 1;
-  if (won && mendikot) stats.mendikots += 1;
-  if (won && bawanya) stats.bawanyas += 1;
-  saveStats(stats);
-  return { stats, newlyUnlocked: diffNewBadges(before, stats) };
-}
-
-export function recordGameResult({ won }) {
-  const before = getStats();
-  const stats = { ...before };
   if (won) stats.wins += 1;
   else stats.losses += 1;
+  if (won && mendikot) stats.mendikots += 1;
+  if (won && bawanya) stats.bawanyas += 1;
   saveStats(stats);
   return { stats, newlyUnlocked: diffNewBadges(before, stats) };
 }

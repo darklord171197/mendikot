@@ -4,7 +4,7 @@ import { socket } from "../socket";
 import * as sounds from "../sounds";
 import { isMuted, toggleMute, onMuteChange } from "../sounds";
 import { getAvatar } from "../avatars";
-import { recordRoundResult, recordGameResult } from "../stats";
+import { recordRoundResult } from "../stats";
 import ConnectionBanner from "../ConnectionBanner";
 
 const SUIT_SYMBOL = { s: "♠", h: "♥", d: "♦", c: "♣" };
@@ -291,13 +291,6 @@ export default function RoomPage() {
 
     // Game over
     if (state.status === "gameOver" && prev.status !== "gameOver") {
-      const { newlyUnlocked } = recordGameResult({ won: state.winningTeam === myTeamNow });
-      if (newlyUnlocked.length) {
-        setTimeout(() => {
-          setToast("🏅 Badge unlocked: " + newlyUnlocked.map((b) => b.label).join(", "));
-          setTimeout(() => setToast(""), 3000);
-        }, 1500);
-      }
       setTimeout(() => {
         if (state.winningTeam === myTeamNow) sounds.gameWin();
         else sounds.gameLoss();
