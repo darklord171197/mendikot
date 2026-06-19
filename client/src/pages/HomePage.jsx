@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { socket } from "../socket";
 import { AVATAR_OPTIONS, getAvatar, setAvatar } from "../avatars";
+import ConnectionBanner from "../ConnectionBanner";
 
 export default function HomePage() {
   const [name, setName]       = useState(localStorage.getItem("playerName") || "");
@@ -53,6 +54,7 @@ export default function HomePage() {
       socket.off("state", onState);
       socket.off("errorMessage", onError);
       clearTimeout(timer);
+      clearTimeout(wakingTimer);
     };
     const onState = (state) => {
       if (settled) return;
@@ -64,11 +66,15 @@ export default function HomePage() {
       cleanup(); setBusy(false);
       setError(typeof msg === "string" ? msg : "Server error.");
     };
+    const wakingTimer = setTimeout(() => {
+      if (settled) return;
+      setError("Still waking up the server — first connection can take up to a minute…");
+    }, 6000);
     const timer = setTimeout(() => {
       if (settled) return;
       cleanup(); setBusy(false);
       setError("Server didn't respond. Try again.");
-    }, 8000);
+    }, 45000);
 
     socket.on("state", onState);
     socket.on("errorMessage", onError);
@@ -91,6 +97,7 @@ export default function HomePage() {
 
   return (
     <div className="home-page">
+      <ConnectionBanner />
       <div className="home-card">
         <div className="brand-badge">♠ ♥ ♦ ♣</div>
         <h1>Mendikot</h1>

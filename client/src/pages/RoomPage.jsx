@@ -5,6 +5,7 @@ import * as sounds from "../sounds";
 import { isMuted, toggleMute, onMuteChange } from "../sounds";
 import { getAvatar } from "../avatars";
 import { recordRoundResult, recordGameResult } from "../stats";
+import ConnectionBanner from "../ConnectionBanner";
 
 const SUIT_SYMBOL = { s: "♠", h: "♥", d: "♦", c: "♣" };
 const SUIT_NAME   = { s: "Spades", h: "Hearts", d: "Diamonds", c: "Clubs" };
@@ -353,6 +354,7 @@ export default function RoomPage() {
   if (!state) {
     return (
       <div className="game-page">
+        <ConnectionBanner />
         <div className="loading-card">
           <h2>Connecting to room...</h2>
           <p>Room: {code}</p>
@@ -449,6 +451,7 @@ export default function RoomPage() {
         </div>
       </header>
 
+      <ConnectionBanner />
       {error && <div className="error-box">{error}</div>}
       {toast && <div className="toast">{toast}</div>}
 

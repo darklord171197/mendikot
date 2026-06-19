@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { socket } from "../socket";
 import { getAvatar } from "../avatars";
+import ConnectionBanner from "../ConnectionBanner";
 
 export default function LobbyPage() {
   const { roomCode } = useParams();
@@ -99,6 +100,7 @@ export default function LobbyPage() {
   if (!state) {
     return (
       <div className="lobby-page">
+        <ConnectionBanner />
         <div className="loading-card">
           <h2>Connecting to room...</h2>
           <p>Room: {code}</p>
@@ -205,6 +207,7 @@ export default function LobbyPage() {
         </div>
       </header>
 
+      <ConnectionBanner />
       {error && <div className="error-box lobby-error">{error}</div>}
 
       <div className="lobby-status-bar">
