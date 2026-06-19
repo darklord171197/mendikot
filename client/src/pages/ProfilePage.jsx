@@ -39,8 +39,8 @@ export default function ProfilePage() {
 
         <div className="stats-grid">
           <div className="stat-box">
-            <div className="stat-value">{stats.gamesPlayed}</div>
-            <div className="stat-label">Games Played</div>
+            <div className="stat-value">{stats.roundsPlayed}</div>
+            <div className="stat-label">Rounds Played</div>
           </div>
           <div className="stat-box">
             <div className="stat-value">{stats.wins}</div>

@@ -1,7 +1,7 @@
 const STORAGE_KEY = "playerStats";
 
 const DEFAULT_STATS = {
-  gamesPlayed: 0,
+  roundsPlayed: 0,
   wins: 0,
   losses: 0,
   mendikots: 0,
@@ -28,9 +28,9 @@ export const BADGES = [
   { id: "bawanya-1",   category: "bawanyas",    threshold: 1,   label: "First Bawanya",    icon: "💥" },
   { id: "bawanya-5",   category: "bawanyas",    threshold: 5,   label: "Bawanya x5",       icon: "💥" },
   { id: "bawanya-10",  category: "bawanyas",    threshold: 10,  label: "Bawanya x10",      icon: "💥" },
-  { id: "games-1",     category: "gamesPlayed", threshold: 1,   label: "First Game",       icon: "🎮" },
-  { id: "games-10",    category: "gamesPlayed", threshold: 10,  label: "10 Games Played",  icon: "🎮" },
-  { id: "games-100",   category: "gamesPlayed", threshold: 100, label: "100 Games Played", icon: "🎮" },
+  { id: "rounds-1",    category: "roundsPlayed", threshold: 1,   label: "First Round",       icon: "🎮" },
+  { id: "rounds-10",   category: "roundsPlayed", threshold: 10,  label: "10 Rounds Played",  icon: "🎮" },
+  { id: "rounds-100",  category: "roundsPlayed", threshold: 100, label: "100 Rounds Played", icon: "🎮" },
 ];
 
 export function getUnlockedBadgeIds(stats) {
@@ -47,6 +47,7 @@ function diffNewBadges(before, after) {
 export function recordRoundResult({ mendikot, bawanya, won }) {
   const before = getStats();
   const stats = { ...before };
+  stats.roundsPlayed += 1;
   if (won && mendikot) stats.mendikots += 1;
   if (won && bawanya) stats.bawanyas += 1;
   saveStats(stats);
@@ -56,7 +57,6 @@ export function recordRoundResult({ mendikot, bawanya, won }) {
 export function recordGameResult({ won }) {
   const before = getStats();
   const stats = { ...before };
-  stats.gamesPlayed += 1;
   if (won) stats.wins += 1;
   else stats.losses += 1;
   saveStats(stats);
