@@ -1707,18 +1707,50 @@ button {
 /* PROFILE / AVATAR / STATS / BADGES                           */
 /* ========================================================== */
 
+.home-top-btn-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
 .home-profile-btn {
   width: 100%;
-  margin-bottom: 14px;
-  padding: 10px 14px;
+  margin-bottom: 0;
+  padding: 10px 10px;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: var(--bg-1);
   color: white;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
 }
+
+/* ========================================================== */
+/* HOW TO PLAY                                                 */
+/* ========================================================== */
+
+.htp-card { max-width: 520px; text-align: left; }
+.htp-card h1 { text-align: center; }
+.htp-card .brand-badge { text-align: center; }
+
+.htp-section { margin: 18px 0; }
+.htp-section h2 {
+  font-size: 16px;
+  color: var(--accent);
+  margin: 0 0 6px;
+}
+.htp-section p { margin: 0; color: #cbd5e1; font-size: 14px; line-height: 1.6; }
+
+.htp-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.htp-list li { margin-bottom: 6px; }
 
 .avatar-picker {
   display: flex;

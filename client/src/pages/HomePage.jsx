@@ -103,14 +103,24 @@ export default function HomePage() {
         <h1>Mendikot</h1>
         <p className="subtitle">Play with friends or bots</p>
 
-        <button
-          type="button"
-          className="home-profile-btn"
-          onClick={() => navigate("/profile")}
-          title="Profile, avatar and badges"
-        >
-          {avatar} Profile
-        </button>
+        <div className="home-top-btn-row">
+          <button
+            type="button"
+            className="home-profile-btn"
+            onClick={() => navigate("/profile")}
+            title="Profile, avatar and badges"
+          >
+            {avatar} Profile
+          </button>
+          <button
+            type="button"
+            className="home-profile-btn"
+            onClick={() => navigate("/how-to-play")}
+            title="Learn the rules"
+          >
+            📖 How to Play
+          </button>
+        </div>
 
         <input
           className="input"
